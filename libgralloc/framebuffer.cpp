@@ -271,7 +271,7 @@ static void *hdmi_ui_loop(void *ptr)
             return NULL;
         }
         bool waitForVsync = true;
-
+        int flags = WAIT_FOR_VSYNC;
         if (m->pobjOverlay) {
             Overlay* pTemp = m->pobjOverlay;
             if (m->hdmiMirroringState == HDMI_NO_MIRRORING)
@@ -289,11 +289,11 @@ static void *hdmi_ui_loop(void *ptr)
                    info.size = hnd->size;
 
                    if (m->trueMirrorSupport)
-                       waitForVsync = false;
+                       flags &= ~WAIT_FOR_VSYNC;
                    // start the overlay Channel for mirroring
                    // m->enableHDMIOutput corresponds to the fbnum
                    if (pTemp->startChannel(info, m->enableHDMIOutput,
-                                           false, true, 0, VG0_PIPE, waitForVsync)) {
+                                           false, true, 0, VG0_PIPE, flags)) {
                         pTemp->setFd(m->framebuffer->fd);
                         pTemp->setCrop(0, 0, m->info.xres, m->info.yres);
                    } else
@@ -324,8 +324,8 @@ static void *hdmi_ui_loop(void *ptr)
                     }
                     if (m->trueMirrorSupport) {
                         // if video is started the UI channel should be NO_WAIT.
-                        waitForVsync = !m->videoOverlay;
-                        pTemp->updateWaitForVsyncFlags(waitForVsync);
+                        flags = !m->videoOverlay ? WAIT_FOR_VSYNC : 0;
+                        pTemp->updateOverlayFlags(flags);
                     }
                     pTemp->queueBuffer(m->currentOffset);
                 }
