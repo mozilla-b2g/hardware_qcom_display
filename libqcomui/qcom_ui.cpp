@@ -286,6 +286,16 @@ int updateBufferGeometry(sp<GraphicBuffer> buffer, const qBufGeometry updatedGeo
     return 0;
 }
 
+/* Update the S3D format of this buffer.
+*
+* @param: buffer whosei S3D format needs to be updated.
+* @param: Updated buffer S3D format
+*/
+int updateBufferS3DFormat(sp<GraphicBuffer> buffer, const int s3dFormat)
+{
+    buffer->format |= s3dFormat;
+    return 0;
+}
 /*
  * Updates the flags for the layer
  *
