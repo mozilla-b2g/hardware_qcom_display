@@ -35,6 +35,8 @@
 using namespace overlay;
 #endif
 
+#include <cutils/log.h>
+
 enum {
     /* gralloc usage bits indicating the type
      * of allocation that should be used */
