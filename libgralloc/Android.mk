@@ -68,7 +68,7 @@ LOCAL_SRC_FILES :=  ionalloc.cpp \
                     pmemalloc.cpp \
                     pmem_bestfit_alloc.cpp \
                     alloc_controller.cpp
-LOCAL_CFLAGS:= -DLOG_TAG=\"memalloc\" -DLOG_NDDEBUG=0
+LOCAL_CFLAGS:= -DLOG_TAG=\"memalloc\"
 
 ifeq ($(TARGET_USES_ION),true)
     LOCAL_CFLAGS += -DUSE_ION
