@@ -1713,6 +1713,7 @@ bool OverlayControlChannel::setTransform(int value, bool fetch) {
 
     if (ioctl(mRotFD, MSM_ROTATOR_IOCTL_START, &mRotInfo)) {
         reportError("setTransform, rotator start failed");
+        dump(mRotInfo);
         return false;
     }
 
@@ -2137,6 +2138,7 @@ bool OverlayDataChannel::setCrop(uint32_t x, uint32_t y, uint32_t w, uint32_t h)
     }
     if (ioctl(mFD, MSMFB_OVERLAY_SET, &ov)) {
         reportError("setCrop, overlay set error");
+        dump(ov);
         return false;
     }
 
