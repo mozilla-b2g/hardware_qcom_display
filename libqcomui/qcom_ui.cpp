@@ -293,6 +293,11 @@ int updateBufferGeometry(sp<GraphicBuffer> buffer, const qBufGeometry updatedGeo
 */
 int updateBufferS3DFormat(sp<GraphicBuffer> buffer, const int s3dFormat)
 {
+    if (buffer == 0) {
+        LOGE("%s: graphic buffer is NULL", __FUNCTION__);
+        return -EINVAL;
+    }
+
     buffer->format |= s3dFormat;
     return 0;
 }
