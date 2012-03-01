@@ -1538,6 +1538,12 @@ static int hwc_set(hwc_composer_device_t *dev,
                 drawLayerUsingCopybit(dev, &(list->hwLayers[i]), (EGLDisplay)dpy, (EGLSurface)sur);
             }
         }
+    } else {
+        //Device in suspended state. Close all the MDP pipes
+#ifdef COMPOSITION_BYPASS
+        ctx->nPipesUsed = 0;
+#endif
+        ctx->hwcOverlayStatus =  HWC_OVERLAY_PREPARE_TO_CLOSE;
     }
 
     bool canSkipComposition = list && list->flags & HWC_SKIP_COMPOSITION;
