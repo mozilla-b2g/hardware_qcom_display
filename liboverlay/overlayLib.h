@@ -135,7 +135,6 @@ struct overlay_buffer_info {
     int height;
     int format;
     int size;
-    bool secure;
 };
 
 using android::Mutex;
@@ -308,7 +307,7 @@ enum {
 public:
     OverlayControlChannel();
     ~OverlayControlChannel();
-    bool startControlChannel(int w, int h, int format,
+    bool startControlChannel(const overlay_buffer_info& info,
                                int fbnum, bool norot = false,
                                bool uichannel = false,
                                unsigned int format3D = 0, int zorder = 0,
