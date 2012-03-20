@@ -226,7 +226,7 @@ status_t Rotator::rotateBuffer(msm_rotator_data_info& rotData) {
 
 OverlayUI::OverlayUI() : mChannelState(CLOSED), mOrientation(NO_INIT),
         mFBNum(NO_INIT), mZorder(NO_INIT), mWaitForVsync(false), mIsFg(false),
-        mSessionID(NO_INIT) {
+        mSessionID(NO_INIT), mParamsChanged(false) {
         memset(&mOvInfo, 0, sizeof(mOvInfo));
         memset(&mRotInfo, 0, sizeof(mRotInfo));
 }
@@ -245,6 +245,13 @@ void OverlayUI::setSource(const overlay_buffer_info& info, int orientation) {
         LOGE("%s: Unsupported format", __func__);
         return;
     }
+
+    mParamsChanged |= (mSource.width ^ info.width) ||
+                      (mSource.height ^ info.height) ||
+                      (mSource.format ^ format) ||
+                      (mSource.size ^ info.size) ||
+                      (mOrientation ^ orientation);
+
     mSource.width = info.width;
     mSource.height = info.height;
     mSource.format = format;
@@ -256,8 +263,6 @@ void OverlayUI::setSource(const overlay_buffer_info& info, int orientation) {
 void OverlayUI::setDisplayParams(int fbNum, bool waitForVsync, bool isFg, int
         zorder, bool isVGPipe) {
     int flags = 0;
-    mFBNum = fbNum;
-    mOvInfo.is_fg = isFg;
 
     if(false == waitForVsync)
         flags |= MDP_OV_PLAY_NOWAIT;
@@ -272,6 +277,13 @@ void OverlayUI::setDisplayParams(int fbNum, bool waitForVsync, bool isFg, int
     if (turnOFFVSync())
         flags |= MDP_OV_PLAY_NOWAIT;
 
+    mParamsChanged |= (mFBNum ^ fbNum) ||
+                      (mOvInfo.is_fg ^ isFg) ||
+                      (mOvInfo.flags ^ flags) ||
+                      (mOvInfo.z_order ^ zorder);
+
+    mFBNum = fbNum;
+    mOvInfo.is_fg = isFg;
     mOvInfo.flags = flags;
     mOvInfo.z_order = zorder;
 
@@ -279,6 +291,11 @@ void OverlayUI::setDisplayParams(int fbNum, bool waitForVsync, bool isFg, int
 }
 
 void OverlayUI::setPosition(int x, int y, int w, int h) {
+    mParamsChanged |= (mOvInfo.dst_rect.x ^ x) ||
+                      (mOvInfo.dst_rect.y ^ y) ||
+                      (mOvInfo.dst_rect.w ^ w) ||
+                      (mOvInfo.dst_rect.h ^ h);
+
     mOvInfo.dst_rect.x = x;
     mOvInfo.dst_rect.y = y;
     mOvInfo.dst_rect.w = w;
@@ -286,6 +303,11 @@ void OverlayUI::setPosition(int x, int y, int w, int h) {
 }
 
 void OverlayUI::setCrop(int x, int y, int w, int h) {
+    mParamsChanged |= (mOvInfo.src_rect.x ^ x) ||
+                      (mOvInfo.src_rect.y ^ y) ||
+                      (mOvInfo.src_rect.w ^ w) ||
+                      (mOvInfo.src_rect.h ^ h);
+
     mOvInfo.src_rect.x = x;
     mOvInfo.src_rect.y = y;
     mOvInfo.src_rect.w = w;
@@ -352,8 +374,6 @@ void OverlayUI::setupOvRotInfo() {
     mRotInfo.rotations = mOvInfo.user_data[0];
     if (mdp_rotation)
         mRotInfo.enable = 1;
-    mOvInfo.dst_rect.w = mOvInfo.src_rect.w;
-    mOvInfo.dst_rect.h = mOvInfo.src_rect.h;
 }
 
 status_t OverlayUI::commit() {
@@ -385,6 +405,7 @@ status_t OverlayUI::closeChannel() {
         return BAD_VALUE;
     }
     mChannelState = CLOSED;
+    mParamsChanged = false;
     memset(&mOvInfo, 0, sizeof(mOvInfo));
     memset(&mRotInfo, 0, sizeof(mRotInfo));
     return NO_ERROR;
@@ -392,15 +413,22 @@ status_t OverlayUI::closeChannel() {
 
 status_t OverlayUI::startOVSession() {
     status_t ret = NO_INIT;
-    mdp_overlay ovInfo = mOvInfo;
+    ret = mobjDisplay.openDisplay(mFBNum);
 
-    if (ioctl(mobjDisplay.getFD(), MSMFB_OVERLAY_SET, &ovInfo)) {
-        LOGE("%s: Overlay set failed", __FUNCTION__);
-        ret = BAD_VALUE;
-    } else {
-        mSessionID = ovInfo.id;
-        mOvInfo = ovInfo;
-        ret = NO_ERROR;
+    if (ret != NO_ERROR)
+        return ret;
+
+    if(mParamsChanged) {
+        mParamsChanged = false;
+        mdp_overlay ovInfo = mOvInfo;
+        if (ioctl(mobjDisplay.getFD(), MSMFB_OVERLAY_SET, &ovInfo)) {
+            LOGE("Overlay set failed..");
+            ret = BAD_VALUE;
+        } else {
+            mSessionID = ovInfo.id;
+            mOvInfo = ovInfo;
+            ret = NO_ERROR;
+        }
     }
     return ret;
 }
