@@ -2304,7 +2304,7 @@ static int hwc_module_initialize(struct private_hwc_module_t* hwcModule)
     }
 
     //Check if composition bypass is enabled
-    if(property_get("ro.sf.compbypass.enable", property, NULL) > 0) {
+    if(property_get("debug.compbypass.enable", property, NULL) > 0) {
         if(atoi(property) == 1) {
             hwcModule->isBypassEnabled = true;
         }
