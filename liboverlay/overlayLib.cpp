@@ -1633,7 +1633,8 @@ bool OverlayControlChannel::setTransform(int value, bool fetch) {
                     mOVInfo.src_rect.y = mOVInfo.src.height - (
                     mOVInfo.src_rect.y + mOVInfo.src_rect.h);
             }
-            else if (val == MDP_ROT_NOP || val == MDP_ROT_180) {
+            else if (val == MDP_ROT_NOP || val == MDP_ROT_180 ||
+                     val == MDP_FLIP_LR || val == MDP_FLIP_UD) {
                     int tmp = mOVInfo.src_rect.x;
                     mOVInfo.src_rect.x = mOVInfo.src.height -
                                (mOVInfo.src_rect.y + mOVInfo.src_rect.h);
@@ -1668,7 +1669,8 @@ bool OverlayControlChannel::setTransform(int value, bool fetch) {
                     mOVInfo.src_rect.x = mOVInfo.src.width -
                                (mOVInfo.src_rect.x + mOVInfo.src_rect.w);
             }
-            else if (val == MDP_ROT_NOP || val == MDP_ROT_180) {
+            else if (val == MDP_ROT_NOP || val == MDP_ROT_180 ||
+                     val == MDP_FLIP_LR || val == MDP_FLIP_UD) {
                     int tmp = mOVInfo.src_rect.y;
                     mOVInfo.src_rect.y = mOVInfo.src.width - (
                         mOVInfo.src_rect.x + mOVInfo.src_rect.w);
