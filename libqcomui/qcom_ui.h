@@ -35,6 +35,7 @@
 #include <hardware/hwcomposer.h>
 #include <ui/Region.h>
 #include <EGL/egl.h>
+#include <GLES/gl.h>
 #include <utils/Singleton.h>
 #include <cutils/properties.h>
 #include "../libgralloc/gralloc_priv.h"
@@ -44,6 +45,8 @@ using android::sp;
 using android::GraphicBuffer;
 
 #define HWC_BYPASS_INDEX_MASK 0x00000030
+#define DEFAULT_WIDTH_RATIO  1
+#define DEFAULT_HEIGHT_RATIO 1
 
 /*
  * Qcom specific Native Window perform operations
@@ -52,6 +55,7 @@ enum {
     NATIVE_WINDOW_SET_BUFFERS_SIZE        = 0x10000000,
     NATIVE_WINDOW_UPDATE_BUFFERS_GEOMETRY = 0x20000000,
     NATIVE_WINDOW_SET_S3D_FORMAT          = 0x40000000,
+    NATIVE_WINDOW_SET_PIXEL_ASPECT_RATIO  = 0x80000000,
 };
 
 // Enum containing the supported composition types
@@ -303,5 +307,9 @@ bool needToDumpLayers();
  */
 void dumpLayer(int moduleCompositionType, int listFlags, size_t layerIndex,
                                                     hwc_layer_t hwLayers[]);
+
+bool needsAspectRatio (int wRatio, int hRatio);
+void applyPixelAspectRatio (int wRatio, int hRatio, int orientation, int fbWidth,
+                            int fbHeight, Rect& visibleRect, GLfloat vertices[][2]);
 
 #endif // INCLUDE_LIBQCOM_UI
