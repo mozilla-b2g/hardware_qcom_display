@@ -368,8 +368,8 @@ static int prepareBypass(hwc_context_t *ctx, hwc_layer_t *layer,
         }
 
         overlay_buffer_info info;
-        info.width = src_w;
-        info.height = src_h;
+        info.width = hnd->width;
+        info.height = hnd->height;
         info.format = hnd->format;
         info.size = hnd->size;
 
