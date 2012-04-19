@@ -122,6 +122,9 @@ int getNumberOfArgsForOperation(int operation) {
         case  NATIVE_WINDOW_UPDATE_BUFFERS_GEOMETRY:
             num_args = 3;
             break;
+        case NATIVE_WINDOW_SET_PIXEL_ASPECT_RATIO:
+            num_args = 2;
+            break;
         default: LOGE("%s: invalid operation(0x%x)", __FUNCTION__, operation);
             break;
     };
@@ -753,3 +756,97 @@ void dumpLayer(int moduleCompositionType, int listFlags, size_t layerIndex,
         }
 }
 
+bool needsAspectRatio (int wRatio, int hRatio) {
+    return ((wRatio != DEFAULT_WIDTH_RATIO) || (hRatio != DEFAULT_HEIGHT_RATIO));
+}
+
+void applyPixelAspectRatio (int wRatio, int hRatio, int orientation, int fbWidth,
+                            int fbHeight, Rect& visibleRect, GLfloat mVertices[][2]) {
+
+    int delta = 0;
+    int factor = 1;
+    int new_width, new_height;
+    int old_width = abs(visibleRect.right - visibleRect.left);
+    int old_height = abs(visibleRect.bottom - visibleRect.top);
+
+    if ((orientation != 0) && (orientation != 3) &&
+        (orientation != 4) && (orientation != 7)) {
+        // During animation, no defined orientation, rely on mTransformedBounds
+        if (old_width >= old_height)
+            orientation = 0;
+        else
+            orientation = 4;
+    }
+
+    switch (orientation) {
+
+        case 0: // Rotation: 0
+        case 3: // Rotation: 180
+            if (fbHeight >= fbWidth) {
+                factor = old_width / wRatio;
+                new_height = factor * hRatio;
+                delta = (new_height - old_height) / 2;
+                visibleRect.top -= delta;
+                visibleRect.bottom += delta;
+
+                // Set mVertices for GPU fallback (During rotation)
+                if (orientation == 0) {
+                    mVertices[1][1] = mVertices[2][1] = visibleRect.top;
+                    mVertices[0][1] = mVertices[3][1] = visibleRect.bottom;
+                } else {
+                    mVertices[0][1] = mVertices[3][1] = visibleRect.top;
+                    mVertices[1][1] = mVertices[2][1] = visibleRect.bottom;
+                }
+            } else {
+                factor = old_height / hRatio;
+                new_width = factor * wRatio;
+                delta = (new_width - old_width) / 2;
+                visibleRect.left -= delta;
+                visibleRect.right += delta;
+
+                // Set mVertices for GPU fallback (During rotation)
+                mVertices[0][0] = mVertices[1][0] = visibleRect.left;
+                mVertices[2][0] = mVertices[3][0] = visibleRect.right;
+            }
+            break;
+
+        case 4: // Rotation: 90
+        case 7: // Rotation: 270
+            if (fbHeight >= fbWidth) {
+                factor = old_width / hRatio;
+                new_width = factor * wRatio;
+                delta = (new_width - old_height) / 2;
+                visibleRect.top -= delta;
+                visibleRect.bottom += delta;
+
+                // Set mVertices for GPU fallback (During rotation)
+                if (orientation == 4) {
+                    mVertices[2][1] = mVertices[3][1] = visibleRect.top;
+                    mVertices[0][1] = mVertices[1][1] = visibleRect.bottom;
+                } else {
+                    mVertices[0][1] = mVertices[1][1] = visibleRect.top;
+                    mVertices[2][1] = mVertices[3][1] = visibleRect.bottom;
+                }
+            } else {
+                factor = old_height / wRatio;
+                new_height = factor * hRatio;
+                delta = (new_height - old_width) / 2;
+                visibleRect.left -= delta;
+                visibleRect.right += delta;
+
+                // Set mVertices for GPU fallback (During rotation)
+                if (orientation == 4) {
+                    mVertices[1][0] = mVertices[2][0] = visibleRect.left;
+                    mVertices[0][0] = mVertices[3][0] = visibleRect.right;
+                } else {
+                    mVertices[0][0] = mVertices[3][0] = visibleRect.left;
+                    mVertices[1][0] = mVertices[2][0] = visibleRect.right;
+                }
+            }
+            break;
+
+        default: // Handled above.
+            break;
+
+    }
+}
