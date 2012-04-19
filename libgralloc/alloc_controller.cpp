@@ -389,7 +389,16 @@ size_t getBufferSizeAndDimensions(int width, int height, int format,
             }
             size = ALIGN(size, 4096);
             break;
-
+        case HAL_PIXEL_FORMAT_YCbCr_422_SP:
+        case HAL_PIXEL_FORMAT_YCrCb_422_SP:
+            if(width & 1) {
+                LOGE("width is odd for the YUV422_SP format");
+                return -EINVAL;
+            }
+            alignedw = ALIGN(width, 16);
+            alignedh = height;
+            size = ALIGN(alignedw * alignedh * 2, 4096);
+            break;
         default:
             LOGE("unrecognized pixel format: %d", format);
             return -EINVAL;
