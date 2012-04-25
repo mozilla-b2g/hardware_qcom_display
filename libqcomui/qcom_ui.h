@@ -115,9 +115,10 @@ enum external_display_type {
    connect, disconnect, orientation, video started etc.,
 */
 enum {
-    EVENT_EXTERNAL_DISPLAY,   // External display on/off Event
-    EVENT_VIDEO_OVERLAY,      // Video Overlay start/stop Event
-    EVENT_ORIENTATION_CHANGE, // Orientation Change Event
+    EVENT_EXTERNAL_DISPLAY,     // External display on/off Event
+    EVENT_VIDEO_OVERLAY,        // Video Overlay start/stop Event
+    EVENT_ORIENTATION_CHANGE,   // Orientation Change Event
+    EVENT_OVERLAY_STATE_CHANGE, // Overlay State Change Event
 };
 
 // Video information sent to framebuffer HAl
@@ -127,6 +128,13 @@ enum {
     VIDEO_2D_OVERLAY_STARTED,
     VIDEO_3D_OVERLAY_STARTED
 };
+
+// Information about overlay state change
+enum {
+    OVERLAY_STATE_CHANGE_START = 0,
+    OVERLAY_STATE_CHANGE_END
+};
+
 /*
  * Structure to hold the buffer geometry
  */
