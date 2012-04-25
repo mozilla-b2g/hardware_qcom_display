@@ -51,7 +51,7 @@ namespace utils {
 
    inline Timer::~Timer() {
       timer.stop();
-      LOGE("%s duration %llu us", func, timer.durationUsecs());
+      LOGE_IF(PROFILE_OVERLAY, "%s: duration %llu us", func, timer.durationUsecs());
    }
 
    inline bool isYuv(uint32_t format) {
@@ -169,7 +169,7 @@ namespace utils {
    }
 
    inline int getMdpOrient(eTransform rotation) {
-      LOGE("getMdpOrient rot=%d", rotation);
+      LOGE_IF(DEBUG_OVERLAY, "%s: rot=%d", __FUNCTION__, rotation);
       switch(rotation)
       {
       case OVERLAY_TRANSFORM_0 : return 0;

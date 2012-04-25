@@ -443,10 +443,6 @@ void Overlay::handleEvent(utils::eOverlayState s) {
    mOv = mState.handleEvent(s, mOv);
 }
 
-void Overlay::handleEvent(utils::eDisplayFormat f) {
-   mOv = mState.handleEvent(utils::fmt2state(f), mOv);
-}
-
 utils::eOverlayState Overlay::getState() const {
    return mState.state();
 }

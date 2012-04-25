@@ -283,7 +283,6 @@ utils::Dim Ctrl::getAspectRatio(const utils::Dim& dim) const {
     int xPos = 0;
     int yPos = 0;
     int tmp = 0;
-    float actualWidth = fbWidth;
     utils::Dim tmpDim;
     switch(inDim.o) {
         case MDP_ROT_NOP:
@@ -295,7 +294,6 @@ utils::Dim Ctrl::getAspectRatio(const utils::Dim& dim) const {
             yPos = tmpDim.y;
             fbWidth = tmpDim.w;
             fbHeight = tmpDim.h;
-            actualWidth = fbWidth;
 
             if (inDim.o == MDP_ROT_180) {
                 inDim.x = priWidth - (inDim.x + inDim.w);
@@ -306,17 +304,6 @@ utils::Dim Ctrl::getAspectRatio(const utils::Dim& dim) const {
         case MDP_ROT_90:
         case MDP_ROT_270:
         {
-            // Swap width/height for primary
-            utils::swapWidthHeight(priWidth, priHeight);
-            // Swap the destination width/height
-            utils::swapWidthHeight(inDim.w, inDim.h);
-            utils::Whf whf((uint32_t) priWidth, (uint32_t) priHeight, 0);
-            tmpDim = getAspectRatio(whf);
-            xPos = tmpDim.x;
-            yPos = tmpDim.y;
-            fbWidth = tmpDim.w;
-            fbHeight = tmpDim.h;
-            actualWidth = fbWidth;
             if(inDim.o == MDP_ROT_90) {
                 tmp = inDim.y;
                 inDim.y = priWidth - (inDim.x + inDim.w);
@@ -327,24 +314,35 @@ utils::Dim Ctrl::getAspectRatio(const utils::Dim& dim) const {
                 inDim.x = priHeight - (inDim.y + inDim.h);
                 inDim.y = tmp;
             }
+
+            // Swap the destination width/height
+            utils::swapWidthHeight(inDim.w, inDim.h);
+            // Swap width/height for primary
+            utils::swapWidthHeight(priWidth, priHeight);
+            utils::Whf whf((uint32_t) priWidth, (uint32_t) priHeight, 0);
+            tmpDim = getAspectRatio(whf);
+            xPos = tmpDim.x;
+            yPos = tmpDim.y;
+            fbWidth = tmpDim.w;
+            fbHeight = tmpDim.h;
             break;
         }
         default:
             LOGE("%s: Unknown Orientation", __FUNCTION__);
             break;
     }
-    //Calculate the position...
+
+    // Calculate the position
     xRatio = inDim.x/priWidth;
     yRatio = inDim.y/priHeight;
-
     wRatio = inDim.w/priWidth;
     hRatio = inDim.h/priHeight;
 
-    return utils::Dim((xRatio * actualWidth) + xPos,   // x
-                      (yRatio * fbHeight) + yPos,      // y
-                      (wRatio * actualWidth),          // width
-                      (hRatio * fbHeight),             // height
-                      inDim.o);                        // orientation
+    return utils::Dim((xRatio * fbWidth) + xPos,   // x
+                      (yRatio * fbHeight) + yPos,  // y
+                      (wRatio * fbWidth),          // width
+                      (hRatio * fbHeight),         // height
+                      inDim.o);                    // orientation
 }
 
 void Ctrl::dump() const {

@@ -59,6 +59,7 @@
 #endif // OVERLAY_HAS_ASSERT
 
 #define DEBUG_OVERLAY 0
+#define PROFILE_OVERLAY 0
 
 namespace overlay2 {
 
@@ -511,100 +512,29 @@ namespace utils {
       PlayInfo play;
    };
 
-    /* 2D or 3D Panel/TV types */
-    enum eDisplayType {
-        DISPLAY_TYPE_UNSUPPORTED = 0,
-        DISPLAY_TYPE_2D = 1 << 0,
-        DISPLAY_TYPE_3D = 1 << 1,
-    };
-
-    /* Target display combo */
-    enum eDisplayPolicy {
-        DISPLAY_POLICY_DONT_DISPLAY = 1 << 2,
-        DISPLAY_POLICY_PANEL_ONLY = 1 << 3,
-        DISPLAY_POLICY_TV_ONLY = 1 << 4,
-        DISPLAY_POLICY_BOTH = 1 << 5,
-    };
-
-    /* Content type */
-    enum eContentType {
-        CONTENT_TYPE_UNSUPPORTED = 1 << 6,
-        CONTENT_TYPE_2D = 1 << 7,
-        CONTENT_TYPE_3D = 1 << 8,
-    };
-
-    /* Broad content categories */
-    enum eContentFmtClass {
-        CONTENT_FMT_CLASS_NONE = 1 << 9,
-        CONTENT_FMT_CLASS_YUV = 1 << 10,
-        CONTENT_FMT_CLASS_RGB = 1 << 11,
-    };
-
-   // Used for state machine when there is an external
-   // event and it get the format. 3D, 2D etc...
-    enum eDisplayFormat {
-        DF_UNSUPPORTED = 0,
-
-        //2D Video playback. Not setting panel type, since it doesnt matter
-        DF_2D_YUV_2D_PANEL = CONTENT_TYPE_2D | CONTENT_FMT_CLASS_YUV |
-                DISPLAY_POLICY_PANEL_ONLY,
-        DF_2D_YUV_3D_PANEL = DF_2D_YUV_2D_PANEL,
-
-        //2D Video mirroring. Not setting panel type, since it doesnt matter
-        DF_2D_YUV_BOTH = CONTENT_TYPE_2D | CONTENT_FMT_CLASS_YUV |
-                DISPLAY_POLICY_BOTH,
-
-        //TV Only modes unsupported for now
-        DF_2D_RGB_2D_TV = DF_UNSUPPORTED,
-        DF_2D_RGB_3D_TV = DF_UNSUPPORTED,
-        DF_2D_YUV_2D_TV = DF_UNSUPPORTED,
-        DF_2D_YUV_3D_TV = DF_UNSUPPORTED,
-        DF_3D_YUV_2D_TV = DF_UNSUPPORTED,
-
-        //UI Mirroring. Not setting panel type, since it doesnt matter
-        DF_2D_RGB_BOTH = CONTENT_TYPE_2D | CONTENT_FMT_CLASS_RGB |
-                DISPLAY_POLICY_TV_ONLY,
- 
-        //3D video playback on panels
-        DF_3D_YUV_2D_PANEL = CONTENT_TYPE_3D | CONTENT_FMT_CLASS_YUV |
-                DISPLAY_TYPE_2D | DISPLAY_POLICY_PANEL_ONLY,
-
-        DF_3D_YUV_3D_PANEL = CONTENT_TYPE_3D | CONTENT_FMT_CLASS_YUV |
-                DISPLAY_TYPE_3D | DISPLAY_POLICY_PANEL_ONLY,
-
-        //3D video on 3D TV only
-        DF_3D_YUV_3D_TV = CONTENT_TYPE_3D | CONTENT_FMT_CLASS_YUV |
-                DISPLAY_TYPE_3D | DISPLAY_POLICY_TV_ONLY,
-
-        //3D video on panel and 2D TV
-        DF_3D_YUV_BOTH = CONTENT_TYPE_3D | CONTENT_FMT_CLASS_YUV |
-                DISPLAY_POLICY_BOTH,
-    };
-
    enum eOverlayState{
       /* No pipes from overlay open */
       OV_CLOSED = 0,
 
       /* 2D Video */
-      OV_2D_VIDEO_ON_PANEL = DF_2D_YUV_2D_PANEL,
-      OV_2D_VIDEO_ON_PANEL_TV = DF_2D_YUV_BOTH,
+      OV_2D_VIDEO_ON_PANEL,
+      OV_2D_VIDEO_ON_PANEL_TV,
 
       /* 3D Video on one display (panel or TV) */
-      OV_3D_VIDEO_ON_2D_PANEL = DF_3D_YUV_2D_PANEL,
-      OV_3D_VIDEO_ON_3D_PANEL = DF_3D_YUV_3D_PANEL,
-      OV_3D_VIDEO_ON_3D_TV = DF_3D_YUV_3D_TV,
+      OV_3D_VIDEO_ON_2D_PANEL,
+      OV_3D_VIDEO_ON_3D_PANEL,
+      OV_3D_VIDEO_ON_3D_TV,
 
       /* 3D Video on two displays (panel and TV) */
-      OV_3D_VIDEO_ON_2D_PANEL_2D_TV = DF_3D_YUV_BOTH,
+      OV_3D_VIDEO_ON_2D_PANEL_2D_TV,
 
       /* UI Mirroring */
-      OV_UI_MIRROR = DF_2D_RGB_BOTH,
-      OV_2D_TRUE_UI_MIRROR = 0xFFFE,
-      //OV_UI_3D_VIDEO_ON_2D_PANEL_2D_TV,
-      //OV_UI_3D_VIDEO_ON_3D_TV,
+      OV_UI_MIRROR,
+      OV_2D_TRUE_UI_MIRROR,
+      OV_M3D_TRUE_UI_MIRROR,  // Not yet supported
 
       /* Composition Bypass */
-      OV_BYPASS_1_LAYER = 11,
+      OV_BYPASS_1_LAYER,
       OV_BYPASS_2_LAYER,
       OV_BYPASS_3_LAYER,
    };
@@ -615,30 +545,6 @@ namespace utils {
 
    inline void clearMdpFlags(eMdpFlags& f, eMdpFlags v) {
       f = static_cast<eMdpFlags>(clrBit(f, v));
-   }
-
-   inline void setContentType(eDisplayFormat& f, eContentType ct) {
-      f = static_cast<eDisplayFormat>(setBit(f, ct));
-   }
-
-   inline void setContentFmtClass(eDisplayFormat& f, eContentFmtClass cfc) {
-      f = static_cast<eDisplayFormat>(setBit(f, cfc));
-   }
-
-   inline void setDisplayType(eDisplayFormat& f, eDisplayType dt) {
-      f = static_cast<eDisplayFormat>(setBit(f, dt));
-   }
-
-   inline void setDisplayPolicy(eDisplayFormat& f, eDisplayPolicy dp) {
-      f = static_cast<eDisplayFormat>(setBit(f, dp));
-   }
-
-   inline eDisplayFormat state2fmt(eOverlayState s) {
-      return static_cast<eDisplayFormat>(s);
-   }
-
-   inline eOverlayState fmt2state(eDisplayFormat fmt) {
-      return static_cast<eOverlayState>(fmt);
    }
 
    // fb0/1

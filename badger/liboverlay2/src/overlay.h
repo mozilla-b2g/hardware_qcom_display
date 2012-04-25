@@ -76,7 +76,6 @@ public:
 
    /* state related functions */
    void handleEvent(utils::eOverlayState s);
-   void handleEvent(utils::eDisplayFormat f);
 
    /* expose state */
    utils::eOverlayState getState() const;
