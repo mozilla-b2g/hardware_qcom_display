@@ -42,6 +42,12 @@ endif
 
 ifeq ($(TARGET_HAVE_HDMI_OUT),true)
     LOCAL_CFLAGS += -DHDMI_DUAL_DISPLAY
+ifeq ($(TARGET_BOARD_PLATFORM),copper)
+    LOCAL_CFLAGS += -DUSE_OVERLAY2
+    LOCAL_C_INCLUDES += hardware/qcom/display/badger/liboverlay2
+    LOCAL_C_INCLUDES += hardware/qcom/display/badger/liboverlay2/src
+    LOCAL_SHARED_LIBRARIES += liboverlay2
+endif
     LOCAL_C_INCLUDES += hardware/qcom/display/liboverlay
     LOCAL_SHARED_LIBRARIES += liboverlay
 endif
