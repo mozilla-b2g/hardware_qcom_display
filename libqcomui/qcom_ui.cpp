@@ -143,6 +143,10 @@ bool isGPUSupportedFormat(int format) {
         // We check the YV12 formats, since some Qcom specific formats
         // could have the bits set.
         return true;
+    } else if ((format == HAL_PIXEL_FORMAT_RGB_888) ||
+               (format == HAL_PIXEL_FORMAT_YCrCb_422_SP) ||
+               (format == HAL_PIXEL_FORMAT_YCbCr_422_SP)){
+        return false;
     } else if (format & INTERLACE_MASK) {
         // Interlaced content
         return false;
