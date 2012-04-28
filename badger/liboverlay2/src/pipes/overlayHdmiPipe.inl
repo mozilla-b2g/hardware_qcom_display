@@ -62,8 +62,8 @@ namespace overlay2 {
          utils::Whf whf(crop.w, crop.h, 0);
          d = mHdmi.getAspectRatio(whf);
       }
-      LOGE("Calculated aspect ratio for HDMI: x=%d, y=%d, w=%d, h=%d, o=%d",
-           d.x, d.y, d.w, d.h, d.o);
+      LOGE_IF(DEBUG_OVERLAY, "Calculated aspect ratio for HDMI: x=%d, y=%d, w=%d, h=%d, o=%d",
+              d.x, d.y, d.w, d.h, d.o);
       return mHdmi.setPosition(d);
    }
    inline bool HdmiPipe::setParameter(const utils::Params& param) {

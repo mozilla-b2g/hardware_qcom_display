@@ -149,7 +149,7 @@ namespace utils {
                       const utils::PipeArgs& args) {
       // if current size changed, remap
       if(args.whf.size == mMem.curr().size()) {
-         LOGE("%s same size %d", __FUNCTION__, args.whf.size);
+         LOGE_IF(DEBUG_OVERLAY, "%s: same size %d", __FUNCTION__, args.whf.size);
          return true;
       }
 
@@ -158,10 +158,12 @@ namespace utils {
       // even when orientation is 0
       if(utils::OVERLAY_TRANSFORM_0 == args.orientation &&
          utils::ROT_FLAG_ENABLED != args.rotFlags) {
-          return true;
+         LOGE_IF(DEBUG_OVERLAY, "%s: orientation=%d, rotFlags=%d",
+                 __FUNCTION__, args.orientation, args.rotFlags);
+         return true;
       }
 
-      LOGE("%s size changed - remapping", __FUNCTION__);
+      LOGE_IF(DEBUG_OVERLAY, "%s: size changed - remapping", __FUNCTION__);
       OVASSERT(!mMem.prev().valid(), "Prev should not be valid");
 
       // remap and have the current to be the new one.
@@ -301,7 +303,7 @@ namespace utils {
    bool Rotator::overlayTransform(MdpCtrl& mdp,
                                   utils::eTransform& rot)
    {
-      LOGE("Rotator::overlayTransform rot=%d", rot);
+      LOGE_IF(DEBUG_OVERLAY, "%s: rot=%d", __FUNCTION__, rot);
       switch(rot) {
       case 0:
       case HAL_TRANSFORM_FLIP_H:
@@ -320,13 +322,13 @@ namespace utils {
             overlayTransFlipRot270(mdp);
             break;
       default:
-         LOGE("Errot in overlayTransform unknown rot value %d", rot);
+         LOGE("%s: Error due to unknown rot value %d", __FUNCTION__, rot);
          return false;
       }
 
       /* everything below is rotation related */
       int r = utils::getMdpOrient(rot);
-      LOGE("Rotator::overlayTransform r=%d", r);
+      LOGE_IF(DEBUG_OVERLAY, "%s: r=%d", __FUNCTION__, r);
       if (r == -1) {
          LOGE("Ctrl setParameter rot it -1");
          return false;
@@ -353,7 +355,7 @@ namespace utils {
                                     utils::eTransform& rot)
    {
       int val = mdp.getUserData();
-      LOGE("%s prev=%d", __FUNCTION__, val);
+      LOGE_IF(DEBUG_OVERLAY, "%s: prev=%d", __FUNCTION__, val);
       utils::Dim d   = mdp.getSrcRectDim();
       utils::Whf whf = mdp.getSrcWhf();
       if (val == MDP_ROT_90) {
@@ -380,7 +382,7 @@ namespace utils {
                                        utils::eTransform& rot)
    {
       int val = mdp.getUserData();
-      LOGE("%s prev=%d", __FUNCTION__, val);
+      LOGE_IF(DEBUG_OVERLAY, "%s: prev=%d", __FUNCTION__, val);
       utils::Dim d   = mdp.getSrcRectDim();
       utils::Whf whf = mdp.getSrcWhf();
       if (val == MDP_ROT_270) {
@@ -405,7 +407,7 @@ namespace utils {
    void Rotator::overlayTransFlipRot180(MdpCtrl& mdp)
    {
       int val = mdp.getUserData();
-      LOGE("%s prev=%d", __FUNCTION__, val);
+      LOGE_IF(DEBUG_OVERLAY, "%s: prev=%d", __FUNCTION__, val);
       utils::Dim d   = mdp.getSrcRectDim();
       utils::Whf whf = mdp.getSrcWhf();
       if (val == MDP_ROT_270) {
@@ -431,7 +433,7 @@ namespace utils {
    void Rotator::overlayTransFlipRot270(MdpCtrl& mdp)
    {
       int val = mdp.getUserData();
-      LOGE("%s prev=%d", __FUNCTION__, val);
+      LOGE_IF(DEBUG_OVERLAY, "%s: prev=%d", __FUNCTION__, val);
       utils::Dim d   = mdp.getSrcRectDim();
       utils::Whf whf = mdp.getSrcWhf();
       if (val == MDP_ROT_90) {

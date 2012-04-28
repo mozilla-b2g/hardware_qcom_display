@@ -112,6 +112,7 @@ bool OverlayImpl<P0, P1, P2>::closePipe(utils::eDest dest)
    if (utils::OV_PIPE0 & dest) {
       // Close pipe0
       OVASSERT(mPipe0, "%s: OverlayImpl pipe0 is null", __FUNCTION__);
+      LOGE_IF(DEBUG_OVERLAY, "Close pipe0");
       if (!mPipe0->close()) {
          LOGE("%s: OverlayImpl failed to close pipe0", __FUNCTION__);
          return false;
@@ -131,6 +132,7 @@ bool OverlayImpl<P0, P1, P2>::closePipe(utils::eDest dest)
    if (utils::OV_PIPE1 & dest) {
       // Close pipe1
       OVASSERT(mPipe1, "%s: OverlayImpl pipe1 is null", __FUNCTION__);
+      LOGE_IF(DEBUG_OVERLAY, "Close pipe1");
       if (!mPipe1->close()) {
          LOGE("%s: OverlayImpl failed to close pipe1", __FUNCTION__);
          return false;
@@ -150,6 +152,7 @@ bool OverlayImpl<P0, P1, P2>::closePipe(utils::eDest dest)
    if (utils::OV_PIPE2 & dest) {
       // Close pipe2
       OVASSERT(mPipe2, "%s: OverlayImpl pipe2 is null", __FUNCTION__);
+      LOGE_IF(DEBUG_OVERLAY, "Close pipe2");
       if (!mPipe2->close()) {
          LOGE("%s: OverlayImpl failed to close pipe2", __FUNCTION__);
          return false;
@@ -257,7 +260,8 @@ template <class P0, class P1, class P2>
 bool OverlayImpl<P0, P1, P2>::commit(utils::eDest dest)
 {
    OVASSERT(mPipe0 && mPipe1 && mPipe2,
-            "Pipes are null p0=%p p1=%p p2=%p", mPipe0, mPipe1, mPipe2);
+            "%s: Pipes are null p0=%p p1=%p p2=%p",
+            __FUNCTION__, mPipe0, mPipe1, mPipe2);
 
    if (utils::OV_PIPE0 & dest) {
       if(!mPipe0->commit()) {
@@ -287,7 +291,8 @@ template <class P0, class P1, class P2>
 bool OverlayImpl<P0, P1, P2>::setCrop(const utils::Dim& d, utils::eDest dest)
 {
    OVASSERT(mPipe0 && mPipe1 && mPipe2,
-            "Pipes are null p0=%p p1=%p p2=%p", mPipe0, mPipe1, mPipe2);
+            "%s: Pipes are null p0=%p p1=%p p2=%p",
+            __FUNCTION__, mPipe0, mPipe1, mPipe2);
 
    if (utils::OV_PIPE0 & dest) {
       if(!mPipe0->setCrop(d)) {
@@ -318,7 +323,8 @@ bool OverlayImpl<P0, P1, P2>::setPosition(const utils::Dim& d,
                                           utils::eDest dest)
 {
    OVASSERT(mPipe0 && mPipe1 && mPipe2,
-            "Pipes are null p0=%p p1=%p p2=%p", mPipe0, mPipe1, mPipe2);
+            "%s: Pipes are null p0=%p p1=%p p2=%p",
+            __FUNCTION__, mPipe0, mPipe1, mPipe2);
 
    if (utils::OV_PIPE0 & dest) {
       if(!mPipe0->setPosition(d)) {
@@ -349,7 +355,8 @@ bool OverlayImpl<P0, P1, P2>::setParameter(const utils::Params& param,
                                            utils::eDest dest)
 {
    OVASSERT(mPipe0 && mPipe1 && mPipe2,
-            "Pipes are null p0=%p p1=%p p2=%p", mPipe0, mPipe1, mPipe2);
+            "%s: Pipes are null p0=%p p1=%p p2=%p",
+            __FUNCTION__, mPipe0, mPipe1, mPipe2);
 
    if (utils::OV_PIPE0 & dest) {
       if(!mPipe0->setParameter(param)) {
@@ -380,7 +387,8 @@ bool OverlayImpl<P0, P1, P2>::setSource(const utils::PipeArgs args[utils::MAX_PI
                                         utils::eDest dest)
 {
    OVASSERT(mPipe0 && mPipe1 && mPipe2,
-            "Pipes are null p0=%p p1=%p p2=%p", mPipe0, mPipe1, mPipe2);
+            "%s: Pipes are null p0=%p p1=%p p2=%p",
+            __FUNCTION__, mPipe0, mPipe1, mPipe2);
 
    if (utils::OV_PIPE0 & dest) {
       if(!mPipe0->setSource(args[0])) {
@@ -410,7 +418,8 @@ template <class P0, class P1, class P2>
 bool OverlayImpl<P0, P1, P2>::queueBuffer(uint32_t offset, utils::eDest dest)
 {
    OVASSERT(mPipe0 && mPipe1 && mPipe2,
-            "Pipes are null p0=%p p1=%p p2=%p", mPipe0, mPipe1, mPipe2);
+            "%s: Pipes are null p0=%p p1=%p p2=%p",
+            __FUNCTION__, mPipe0, mPipe1, mPipe2);
 
    if (utils::OV_PIPE0 & dest) {
       if(!mPipe0->queueBuffer(offset)) {
@@ -440,7 +449,8 @@ template <class P0, class P1, class P2>
 bool OverlayImpl<P0, P1, P2>::dequeueBuffer(void*& buf, utils::eDest dest)
 {
    OVASSERT(mPipe0 && mPipe1 && mPipe2,
-            "Pipes are null p0=%p p1=%p p2=%p", mPipe0, mPipe1, mPipe2);
+            "%s: Pipes are null p0=%p p1=%p p2=%p",
+            __FUNCTION__, mPipe0, mPipe1, mPipe2);
 
    if (utils::OV_PIPE0 & dest) {
       if(!mPipe0->dequeueBuffer(buf)) {
@@ -470,7 +480,8 @@ template <class P0, class P1, class P2>
 bool OverlayImpl<P0, P1, P2>::waitForVsync(utils::eDest dest)
 {
    OVASSERT(mPipe0 && mPipe1 && mPipe2,
-            "Pipes are null p0=%p p1=%p p2=%p", mPipe0, mPipe1, mPipe2);
+            "%s: Pipes are null p0=%p p1=%p p2=%p",
+            __FUNCTION__, mPipe0, mPipe1, mPipe2);
 
    if (utils::OV_PIPE0 & dest) {
       if(!mPipe0->waitForVsync()) {
@@ -500,7 +511,8 @@ template <class P0, class P1, class P2>
 void OverlayImpl<P0, P1, P2>::setMemoryId(int id, utils::eDest dest)
 {
    OVASSERT(mPipe0 && mPipe1 && mPipe2,
-            "Pipes are null p0=%p p1=%p p2=%p", mPipe0, mPipe1, mPipe2);
+            "%s: Pipes are null p0=%p p1=%p p2=%p",
+            __FUNCTION__, mPipe0, mPipe1, mPipe2);
 
    if (utils::OV_PIPE0 & dest) {
       mPipe0->setMemoryId(id);
@@ -520,7 +532,8 @@ template <class P0, class P1, class P2>
 bool OverlayImpl<P0, P1, P2>::reconfigure(const utils::ReconfArgs& args)
 {
    OVASSERT(mPipe0 && mPipe1 && mPipe2,
-            "Pipes are null p0=%p p1=%p p2=%p", mPipe0, mPipe1, mPipe2);
+            "%s: Pipes are null p0=%p p1=%p p2=%p",
+            __FUNCTION__, mPipe0, mPipe1, mPipe2);
    switch(args.reconf) {
    case utils::RECONFIG_ON:
    {
@@ -606,7 +619,8 @@ template <class P0, class P1, class P2>
 void OverlayImpl<P0, P1, P2>::dump() const
 {
    OVASSERT(mPipe0 && mPipe1 && mPipe2,
-            "Pipes are null p0=%p p1=%p p2=%p", mPipe0, mPipe1, mPipe2);
+            "%s: Pipes are null p0=%p p1=%p p2=%p",
+            __FUNCTION__, mPipe0, mPipe1, mPipe2);
    LOGE("== Dump OverlayImpl dump start ROT p0 ==");
    mRotP0->dump();
    LOGE("== Dump OverlayImpl dump end ROT p0 ==");
