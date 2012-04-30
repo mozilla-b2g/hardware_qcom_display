@@ -1580,7 +1580,10 @@ static int hwc_prepare(hwc_composer_device_t *dev, hwc_layer_list_t* list) {
                     list->hwLayers[i].hints |= HWC_HINT_CLEAR_FB;
                     // We've opened the channel. Set the state to open.
                     ctx->hwcOverlayStatus = HWC_OVERLAY_OPEN;
-
+#else
+                } else if (hwcModule->compositionType & COMPOSITION_TYPE_DYN) {
+                    //dynamic composition for non-overlay targets(8x25/7x27a)
+                    list->hwLayers[i].compositionType = HWC_USE_COPYBIT;
 #endif
                 } else if (hwcModule->compositionType & (COMPOSITION_TYPE_C2D|
                             COMPOSITION_TYPE_MDP)) {
