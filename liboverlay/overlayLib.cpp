@@ -68,6 +68,10 @@ int overlay::get_mdp_format(int format) {
         return MDP_Y_CBCR_H2V2_TILE;
     case HAL_PIXEL_FORMAT_YV12:
         return MDP_Y_CR_CB_GH2V2;
+    case HAL_PIXEL_FORMAT_YCbCr_444_SP:
+        return MDP_YCBCR_H1V1;
+    case HAL_PIXEL_FORMAT_YCrCb_444_SP:
+        return MDP_YCRCB_H1V1;
     default:
         LOGE("%s: unknown color format [0x%x]", __FUNCTION__, format);
         return -1;
