@@ -119,6 +119,10 @@ enum {
     EVENT_VIDEO_OVERLAY,        // Video Overlay start/stop Event
     EVENT_ORIENTATION_CHANGE,   // Orientation Change Event
     EVENT_OVERLAY_STATE_CHANGE, // Overlay State Change Event
+    EVENT_OPEN_SECURE_START, // Start of secure session setup config by stagefright
+    EVENT_OPEN_SECURE_END, // End of secure session setup config by stagefright
+    EVENT_CLOSE_SECURE_START, // Start of secure session teardown config
+    EVENT_CLOSE_SECURE_END, // End of secure session teardown config
 };
 
 // Video information sent to framebuffer HAl
