@@ -925,12 +925,28 @@ int mapFrameBufferLocked(struct private_module_t* module)
         /* Note: the GL driver does not have a r=8 g=8 b=8 a=0 config, so if we do
          * not use the MDP for composition (i.e. hw composition == 0), ask for
          * RGBA instead of RGBX. */
-        if (property_get("debug.sf.hw", property, NULL) > 0 && atoi(property) == 0)
+        if (property_get("debug.sf.hw", property, NULL) > 0 && atoi(property) == 0) {
+            // debug.sf.hw is 0
             module->fbFormat = HAL_PIXEL_FORMAT_RGBX_8888;
-        else if(property_get("debug.composition.type", property, NULL) > 0 && (strncmp(property, "mdp", 3) == 0))
-            module->fbFormat = HAL_PIXEL_FORMAT_RGBX_8888;
-        else
+        } else {
+            // debug.sf.hw is 1
+          if (property_get("debug.composition.type", property, NULL) > 0) {
+               // check for composition type
+               if (strncmp(property, "mdp", 3) == 0) {
+                  module->fbFormat = HAL_PIXEL_FORMAT_RGBX_8888;
+               } else if (strncmp(property, "dyn", 3) == 0) {
+#ifdef MDPVERSION_31
+                  module->fbFormat = HAL_PIXEL_FORMAT_RGBX_8888;
+#else
+                  module->fbFormat = HAL_PIXEL_FORMAT_RGBA_8888;
+#endif
+               } else if (strncmp(property, "gpu", 3) ==0) {
+                  module->fbFormat = HAL_PIXEL_FORMAT_RGBA_8888;
+               }
+          } else {
             module->fbFormat = HAL_PIXEL_FORMAT_RGBA_8888;
+          }
+        }
     } else {
         /*
          * Explicitly request 5/6/5
