@@ -217,14 +217,6 @@ static void *disp_loop(void *ptr)
 }
 
 #if defined(HDMI_DUAL_DISPLAY)
-static int closeHDMIChannel(private_module_t* m)
-{
-    Overlay* pTemp = m->pobjOverlay;
-    if(pTemp != NULL)
-        pTemp->closeChannel();
-    return 0;
-}
-
 static void getSecondaryDisplayDestinationInfo(private_module_t* m, overlay_rect&
                                 rect, int& orientation)
 {
@@ -265,6 +257,77 @@ static void getSecondaryDisplayDestinationInfo(private_module_t* m, overlay_rect
             break;
     }
     return;
+}
+
+static int closeExternalChannel(private_module_t *m)
+{
+    Overlay* pTemp = m->pobjOverlay;
+    if(pTemp != NULL)
+        pTemp->closeChannel();
+    return 0;
+}
+
+static int startExternalChannel(private_module_t *m)
+{
+    Overlay *pTemp = m->pobjOverlay;
+    bool success = true;
+    int flags = WAIT_FOR_VSYNC;
+    if (!pTemp->isChannelUP()) {
+        int alignedW = ALIGN(m->info.xres, 32);
+
+        private_handle_t const* hnd =
+                reinterpret_cast<private_handle_t const*>(m->framebuffer);
+        overlay_buffer_info info;
+        info.width = alignedW;
+        info.height = hnd->height;
+        info.format = hnd->format;
+        info.size = hnd->size;
+
+        if (m->trueMirrorSupport)
+            flags &= ~WAIT_FOR_VSYNC;
+        // External display connected during secure video playback
+        // Open secure UI session
+        // NOTE: when external display is already connected and then secure
+        // playback is started, we dont have to do anything
+        if(m->secureVideoOverlay)
+            flags |= SECURE_OVERLAY_SESSION;
+        // start the overlay Channel for mirroring
+        // m->enableHDMIOutput corresponds to the fbnum
+
+        success = pTemp->startChannel(info, m->enableHDMIOutput,
+                        false, true, 0, VG0_PIPE, flags) &&
+                  pTemp->setFd(m->framebuffer->fd) &&
+                  pTemp->setCrop(0, 0, m->info.xres, m->info.yres);
+    }
+
+    overlay_rect destRect;
+    int rot = 0;
+    int currOrientation = 0;
+    int currentX = 0, currentY = 0;
+    uint32_t currentW = 0, currentH = 0;
+
+    getSecondaryDisplayDestinationInfo(m, destRect, rot);
+    pTemp->getOrientation(currOrientation);
+
+    if(rot != currOrientation) {
+        success &= pTemp->setTransform(rot);
+    }
+
+    pTemp->getPosition(currentX, currentY, currentW, currentH);
+
+    if ((currentX != destRect.x) || (currentY != destRect.y) ||
+            (currentW != destRect.w) || (currentH != destRect.h)) {
+        success &= pTemp->setPosition(destRect.x, destRect.y, destRect.w,
+            destRect.h);
+    }
+
+    if (m->trueMirrorSupport) {
+        // if video is started the UI channel should be NO_WAIT.
+        flags = !m->videoOverlay ? WAIT_FOR_VSYNC : 0;
+        pTemp->updateOverlayFlags(flags);
+    }
+
+    return success ? 0 : -1;
 }
 
 #ifdef USE_OVERLAY2
@@ -450,74 +513,13 @@ static void *hdmi_ui_loop(void *ptr)
             setOverlayState(ovutils::OV_CLOSED);
         }
 #else
-        bool waitForVsync = true;
         int flags = WAIT_FOR_VSYNC;
-        if (m->pobjOverlay) {
-            Overlay* pTemp = m->pobjOverlay;
-            if (m->hdmiMirroringState == HDMI_NO_MIRRORING)
-                closeHDMIChannel(m);
-            else if(m->hdmiMirroringState == HDMI_UI_MIRRORING) {
-                if (!pTemp->isChannelUP()) {
-                   int alignedW = ALIGN(m->info.xres, 32);
-
-                   private_handle_t const* hnd =
-                      reinterpret_cast<private_handle_t const*>(m->framebuffer);
-                   overlay_buffer_info info;
-                   info.width = alignedW;
-                   info.height = hnd->height;
-                   info.format = hnd->format;
-                   info.size = hnd->size;
-
-                   if (m->trueMirrorSupport)
-                       flags &= ~WAIT_FOR_VSYNC;
-                   // External display connected during secure video playback
-                   // Open secure UI session
-                   // NOTE: when external display is already connected and then secure
-                   // playback is started, we dont have to do anything
-                   if(m->secureVideoOverlay)
-                       flags |= SECURE_OVERLAY_SESSION;
-                   // start the overlay Channel for mirroring
-                   // m->enableHDMIOutput corresponds to the fbnum
-                   if (pTemp->startChannel(info, m->enableHDMIOutput,
-                                           false, true, 0, VG0_PIPE, flags)) {
-                        pTemp->setFd(m->framebuffer->fd);
-                        pTemp->setCrop(0, 0, m->info.xres, m->info.yres);
-                   } else
-                       closeHDMIChannel(m);
-                }
-
-                if (pTemp->isChannelUP()) {
-                    overlay_rect destRect;
-                    int rot = 0;
-                    int currOrientation = 0;
-                    getSecondaryDisplayDestinationInfo(m, destRect, rot);
-                    pTemp->getOrientation(currOrientation);
-                    if(rot != currOrientation) {
-                        pTemp->setTransform(rot);
-                    }
-                    EVEN_OUT(destRect.x);
-                    EVEN_OUT(destRect.y);
-                    EVEN_OUT(destRect.w);
-                    EVEN_OUT(destRect.h);
-                    int currentX = 0, currentY = 0;
-                    uint32_t currentW = 0, currentH = 0;
-                    if (pTemp->getPosition(currentX, currentY, currentW, currentH)) {
-                        if ((currentX != destRect.x) || (currentY != destRect.y) ||
-                                (currentW != destRect.w) || (currentH != destRect.h)) {
-                            pTemp->setPosition(destRect.x, destRect.y, destRect.w,
-                                                                    destRect.h);
-                        }
-                    }
-                    if (m->trueMirrorSupport) {
-                        // if video is started the UI channel should be NO_WAIT.
-                        flags = !m->videoOverlay ? WAIT_FOR_VSYNC : 0;
-                        pTemp->updateOverlayFlags(flags);
-                    }
-                    pTemp->queueBuffer(m->currentOffset);
-                }
+        const int NO_ERROR = 0;
+        Overlay* pTemp = m->pobjOverlay;
+        if(m->hdmiMirroringState == HDMI_UI_MIRRORING) {
+            if (startExternalChannel(m) == NO_ERROR) {
+                pTemp->queueBuffer(m->currentOffset);
             }
-            else
-                closeHDMIChannel(m);
         }
 #endif // USE_OVERLAY2
         pthread_mutex_unlock(&m->overlayLock);
@@ -541,7 +543,7 @@ static int fb_videoOverlayStarted(struct framebuffer_device_t* dev, int started)
                 ovutils::eOverlayState state = getOverlayState(m);
                 setOverlayState(state);
 #else
-                closeHDMIChannel(m);
+                closeExternalChannel(m);
 #endif
             } else if (m->enableHDMIOutput)
                 m->hdmiMirroringState = HDMI_UI_MIRRORING;
@@ -579,11 +581,12 @@ static int fb_enableHDMIOutput(struct framebuffer_device_t* dev, int externaltyp
         ovutils::eOverlayState state = getOverlayState(m);
         setOverlayState(state);
 #else
-        closeHDMIChannel(m);
+        closeExternalChannel(m);
 #endif
     }
-    m->hdmiStateChanged = true;
-    pthread_cond_signal(&(m->overlayPost));
+    if(m->hdmiMirroringState == HDMI_UI_MIRRORING) {
+        startExternalChannel(m);
+    }
     pthread_mutex_unlock(&m->overlayLock);
     return 0;
 }
@@ -602,7 +605,7 @@ static int handle_open_secure_start(private_module_t* m) {
     pthread_mutex_lock(&m->overlayLock);
     m->hdmiMirroringState = HDMI_NO_MIRRORING;
     m->secureVideoOverlay = true;
-    closeHDMIChannel(m);
+    closeExternalChannel(m);
     pthread_mutex_unlock(&m->overlayLock);
     return 0;
 }
@@ -626,7 +629,7 @@ static int handle_close_secure_start(private_module_t* m) {
     pthread_mutex_lock(&m->overlayLock);
     m->hdmiMirroringState = HDMI_NO_MIRRORING;
     m->secureVideoOverlay = false;
-    closeHDMIChannel(m);
+    closeExternalChannel(m);
     pthread_mutex_unlock(&m->overlayLock);
     return 0;
 }
