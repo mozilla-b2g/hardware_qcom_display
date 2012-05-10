@@ -1525,7 +1525,8 @@ static int hwc_prepare(hwc_composer_device_t *dev, hwc_layer_list_t* list) {
                        private_handle_t::PRIV_FLAGS_SECURE_BUFFER)?
                        SECURE_OVERLAY_SESSION : 0;
                 flags |= (1 == list->numHwLayers) ? DISABLE_FRAMEBUFFER_FETCH : 0;
-                int videoStarted = VIDEO_2D_OVERLAY_STARTED;
+                int videoStarted = (ctx->s3dLayerFormat && overlay::is3DTV()) ?
+                            VIDEO_3D_OVERLAY_STARTED : VIDEO_2D_OVERLAY_STARTED;
                 setVideoOverlayStatusInGralloc(ctx, videoStarted);
                 if (!isValidDestination(hwcModule->fbDevice, list->hwLayers[i].displayFrame)) {
                     list->hwLayers[i].compositionType = HWC_FRAMEBUFFER;
@@ -1570,7 +1571,8 @@ static int hwc_prepare(hwc_composer_device_t *dev, hwc_layer_list_t* list) {
                 flags |= (hnd->flags &
                        private_handle_t::PRIV_FLAGS_SECURE_BUFFER)?
                        SECURE_OVERLAY_SESSION : 0;
-                int videoStarted = VIDEO_3D_OVERLAY_STARTED;
+                int videoStarted = overlay::is3DTV() ? VIDEO_3D_OVERLAY_STARTED
+                                                    : VIDEO_2D_OVERLAY_STARTED;
                 setVideoOverlayStatusInGralloc(ctx, videoStarted);
 #ifdef USE_OVERLAY
                 if(prepareOverlay(ctx, &(list->hwLayers[i]), flags) == 0) {
