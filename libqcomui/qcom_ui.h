@@ -38,7 +38,6 @@
 #include <GLES/gl.h>
 #include <utils/Singleton.h>
 #include <cutils/properties.h>
-#include "../libgralloc/gralloc_priv.h"
 
 using namespace android;
 using android::sp;

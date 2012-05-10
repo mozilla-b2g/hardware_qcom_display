@@ -17,6 +17,11 @@ LOCAL_PATH:= $(call my-dir)
 # HAL module implemenation, not prelinked and stored in
 # hw/<COPYPIX_HARDWARE_MODULE_ID>.<ro.board.platform>.so
 
+include $(CLEAR_VARS)
+LOCAL_COPY_HEADERS_TO := qcom/display
+LOCAL_COPY_HEADERS := copybit.h
+include $(BUILD_COPY_HEADERS)
+
 ifeq ($(TARGET_USES_C2D_COMPOSITION),true)
     include $(CLEAR_VARS)
     LOCAL_PRELINK_MODULE := false
@@ -25,8 +30,8 @@ ifeq ($(TARGET_USES_C2D_COMPOSITION),true)
     LOCAL_SRC_FILES := copybit_c2d.cpp software_converter.cpp
     LOCAL_MODULE := copybit.$(TARGET_BOARD_PLATFORM)
     LOCAL_C_INCLUDES += $(TARGET_OUT_INTERMEDIATES)/KERNEL_OBJ/usr/include
+    LOCAL_C_INCLUDES += $(TARGET_OUT_HEADERS)/qcom/display
     LOCAL_ADDITIONAL_DEPENDENCIES += $(TARGET_OUT_INTERMEDIATES)/KERNEL_OBJ/usr
-    LOCAL_C_INCLUDES += hardware/qcom/display/libgralloc
     LOCAL_CFLAGS += -DCOPYBIT_Z180=1 -DC2D_SUPPORT_DISPLAY=1
     LOCAL_MODULE_TAGS := optional
     include $(BUILD_SHARED_LIBRARY)
@@ -54,8 +59,8 @@ else
             LOCAL_MODULE := copybit.$(TARGET_BOARD_PLATFORM)
             LOCAL_MODULE_TAGS := optional
             LOCAL_C_INCLUDES += $(TARGET_OUT_INTERMEDIATES)/KERNEL_OBJ/usr/include
+            LOCAL_C_INCLUDES += $(TARGET_OUT_HEADERS)/qcom/display
             LOCAL_ADDITIONAL_DEPENDENCIES += $(TARGET_OUT_INTERMEDIATES)/KERNEL_OBJ/usr
-            LOCAL_C_INCLUDES += hardware/qcom/display/libgralloc
             LOCAL_CFLAGS += -DCOPYBIT_MSM7K=1
             include $(BUILD_SHARED_LIBRARY)
         endif

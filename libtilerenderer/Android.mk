@@ -1,5 +1,10 @@
 LOCAL_PATH := $(call my-dir)
 include $(CLEAR_VARS)
+LOCAL_COPY_HEADERS_TO := qcom/display
+LOCAL_COPY_HEADERS := tilerenderer.h
+include $(BUILD_COPY_HEADERS)
+
+include $(CLEAR_VARS)
 
 ifeq ($(USE_OPENGL_RENDERER),true)
 LOCAL_PRELINK_MODULE := false

@@ -12,8 +12,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Use this flag until pmem/ashmem is implemented in the new gralloc
 LOCAL_PATH := $(call my-dir)
+
+include $(CLEAR_VARS)
+
+LOCAL_COPY_HEADERS_TO := qcom/display
+LOCAL_COPY_HEADERS := gralloc_priv.h
+LOCAL_COPY_HEADERS += gr.h
+LOCAL_COPY_HEADERS += alloc_controller.h
+LOCAL_COPY_HEADERS += memalloc.h
+ifeq ($(call is-board-platform-in-list,copper),true)
+LOCAL_COPY_HEADERS += badger/fb_priv.h
+else
+LOCAL_COPY_HEADERS += a-family/fb_priv.h
+endif
+include $(BUILD_COPY_HEADERS)
 
 # HAL module implemenation, not prelinked and stored in
 # hw/<OVERLAY_HARDWARE_MODULE_ID>.<ro.product.board>.so
@@ -24,17 +37,28 @@ LOCAL_SHARED_LIBRARIES := liblog libcutils libGLESv1_CM libutils libmemalloc lib
 LOCAL_SHARED_LIBRARIES += libgenlock
 
 LOCAL_C_INCLUDES += $(TARGET_OUT_INTERMEDIATES)/KERNEL_OBJ/usr/include
-LOCAL_C_INCLUDES += hardware/qcom/display/libgenlock
-LOCAL_C_INCLUDES += hardware/qcom/display/libqcomui
+LOCAL_C_INCLUDES += $(TARGET_OUT_HEADERS)/qcom/display
 LOCAL_ADDITIONAL_DEPENDENCIES += $(TARGET_OUT_INTERMEDIATES)/KERNEL_OBJ/usr
-LOCAL_SRC_FILES :=  framebuffer.cpp \
-                    gpu.cpp         \
-                    gralloc.cpp     \
-                    mapper.cpp
-
 LOCAL_MODULE := gralloc.$(TARGET_BOARD_PLATFORM)
 LOCAL_MODULE_TAGS := optional
 LOCAL_CFLAGS:= -DLOG_TAG=\"$(TARGET_BOARD_PLATFORM).gralloc\" -DHOST -DDEBUG_CALC_FPS
+
+LOCAL_SRC_FILES :=  gpu.cpp         \
+                    gralloc.cpp     \
+                    mapper.cpp
+
+ifeq ($(call is-board-platform-in-list,copper),true)
+    LOCAL_SRC_FILES += badger/framebuffer.cpp
+    LOCAL_C_INCLUDES += hardware/qcom/display/liboverlay/badger/src
+    LOCAL_CFLAGS += -DUSE_OVERLAY2 #XXX: Remove later
+else
+    LOCAL_SRC_FILES += a-family/framebuffer.cpp
+    ifeq ($(TARGET_USES_POST_PROCESSING),true)
+    LOCAL_CFLAGS += -DUSES_POST_PROCESSING
+    LOCAL_C_INCLUDES += $(TARGET_OUT_HEADERS)/pp/inc
+    endif
+endif
+
 
 ifeq ($(call is-board-platform,msm7627_surf msm7627_6x),true)
     LOCAL_CFLAGS += -DTARGET_MSM7x27
@@ -46,26 +70,7 @@ endif
 
 ifeq ($(TARGET_HAVE_HDMI_OUT),true)
     LOCAL_CFLAGS += -DHDMI_DUAL_DISPLAY
-ifeq ($(TARGET_BOARD_PLATFORM),copper)
-    LOCAL_CFLAGS += -DUSE_OVERLAY2
-    LOCAL_C_INCLUDES += hardware/qcom/display/badger/liboverlay2
-    LOCAL_C_INCLUDES += hardware/qcom/display/badger/liboverlay2/src
-    LOCAL_SHARED_LIBRARIES += liboverlay2
-endif
-    LOCAL_C_INCLUDES += hardware/qcom/display/liboverlay
     LOCAL_SHARED_LIBRARIES += liboverlay
-endif
-
-ifeq ($(TARGET_USES_SF_BYPASS),true)
-    LOCAL_CFLAGS += -DSF_BYPASS
-endif
-
-ifeq ($(TARGET_GRALLOC_USES_ASHMEM),true)
-    LOCAL_CFLAGS += -DUSE_ASHMEM
-endif
-ifeq ($(TARGET_USES_POST_PROCESSING),true)
-LOCAL_CFLAGS += -DUSES_POST_PROCESSING
-LOCAL_C_INCLUDES += $(TARGET_OUT_HEADERS)/pp/inc
 endif
 
 include $(BUILD_SHARED_LIBRARY)

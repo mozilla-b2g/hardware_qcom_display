@@ -5,9 +5,6 @@ display-hals := libqcomui libtilerenderer
 
 #libs to be built for QCOM targets only
 ifeq ($(call is-vendor-board-platform,QCOM),true)
-ifeq ($(TARGET_BOARD_PLATFORM),copper)
-display-hals += badger/liboverlay2
-endif
 display-hals += libhwcomposer liboverlay libgralloc libgenlock libcopybit
 endif
 
