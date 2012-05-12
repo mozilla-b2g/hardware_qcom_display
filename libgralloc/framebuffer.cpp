@@ -175,6 +175,12 @@ static void *disp_loop(void *ptr)
             LOGE("ERROR FBIOPUT_VSCREENINFO failed; frame not displayed");
         }
 
+        //Signal so that we can close channels if we need to
+        pthread_mutex_lock(&m->bufferPostLock);
+        m->bufferPostDone = true;
+        pthread_cond_signal(&m->bufferPostCond);
+        pthread_mutex_unlock(&m->bufferPostLock);
+
         CALC_FPS();
 
         if (cur_buf == -1) {
@@ -641,7 +647,30 @@ static int handle_close_secure_end(private_module_t* m) {
 }
 #endif
 
+//Wait until framebuffer content is displayed.
+////This is called in the context of threadLoop.
+////Display loop wakes this up after display.
+static int fb_waitForBufferPost(struct framebuffer_device_t* dev)
+{
+    private_module_t* m = reinterpret_cast<private_module_t*>(
+                            dev->common.module);
+    pthread_mutex_lock(&m->bufferPostLock);
+    while(m->bufferPostDone == false) {
+        pthread_cond_wait(&(m->bufferPostCond), &(m->bufferPostLock));
+    }
+    pthread_mutex_unlock(&m->bufferPostLock);
+    return 0;
+}
 
+static int fb_resetBufferPostStatus(struct framebuffer_device_t* dev)
+{
+    private_module_t* m = reinterpret_cast<private_module_t*>(
+                            dev->common.module);
+    pthread_mutex_lock(&m->bufferPostLock);
+    m->bufferPostDone = false;
+    pthread_mutex_unlock(&m->bufferPostLock);
+    return 0;
+}
 
 /* fb_perform - used to add custom event and handle them in fb HAL
  * Used for external display related functions as of now
@@ -683,13 +712,18 @@ static int fb_perform(struct framebuffer_device_t* dev, int event, int value)
             handle_close_secure_end(m);
             break;
 #endif
+        case EVENT_RESET_POSTBUFFER:
+            fb_resetBufferPostStatus(dev);
+            break;
+        case EVENT_WAIT_POSTBUFFER:
+            fb_waitForBufferPost(dev);
+            break;
         default:
             LOGE("In %s: UNKNOWN Event = %d!!!", __FUNCTION__, event);
             break;
     }
     return 0;
  }
-
 
 static int fb_post(struct framebuffer_device_t* dev, buffer_handle_t buffer)
 {
@@ -1079,6 +1113,9 @@ int mapFrameBufferLocked(struct private_module_t* module)
     module->hdmiMirroringState = HDMI_NO_MIRRORING;
     module->trueMirrorSupport = false;
 #endif
+    pthread_mutex_init(&(module->bufferPostLock), NULL);
+    pthread_cond_init(&(module->bufferPostCond), NULL);
+    module->bufferPostDone = false;
 
     return 0;
 }
