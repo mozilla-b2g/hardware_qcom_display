@@ -765,49 +765,72 @@ bool needsAspectRatio (int wRatio, int hRatio) {
     return ((wRatio != DEFAULT_WIDTH_RATIO) || (hRatio != DEFAULT_HEIGHT_RATIO));
 }
 
-void applyPixelAspectRatio (int wRatio, int hRatio, int orientation, int fbWidth,
-                            int fbHeight, Rect& visibleRect, GLfloat mVertices[][2]) {
+void applyPixelAspectRatio (int wRatio, int hRatio, int orientation, int maxWidth,
+                            int maxHeight, Rect& visibleRect, GLfloat mVertices[][2]) {
 
-    int delta = 0;
-    int factor = 1;
-    int new_width, new_height;
-    int old_width = abs(visibleRect.right - visibleRect.left);
-    int old_height = abs(visibleRect.bottom - visibleRect.top);
+    if ((wRatio == 0) || (hRatio == 0))
+        return;
 
-    if ((orientation != 0) && (orientation != 3) &&
-        (orientation != 4) && (orientation != 7)) {
+    float wDelta = 0;
+    float hDelta = 0;
+    float aspectRatio;
+    float displayRatio;
+    float new_width, new_height;
+    float old_width = abs(visibleRect.right - visibleRect.left);
+    float old_height = abs(visibleRect.bottom - visibleRect.top);
+
+    if (orientation == Transform::ROT_INVALID) {
         // During animation, no defined orientation, rely on mTransformedBounds
         if (old_width >= old_height)
-            orientation = 0;
+            orientation = Transform::ROT_0;
         else
-            orientation = 4;
+            orientation = Transform::ROT_90;
     }
 
     switch (orientation) {
 
-        case 0: // Rotation: 0
-        case 3: // Rotation: 180
-            if (fbHeight >= fbWidth) {
-                factor = old_width / wRatio;
-                new_height = factor * hRatio;
-                delta = (new_height - old_height) / 2;
-                visibleRect.top -= delta;
-                visibleRect.bottom += delta;
+        case Transform::ROT_0:
+        case Transform::ROT_180:
+
+            // Calculated Aspect Ratio = Original Aspect Ratio x Pixel Aspect Ratio
+            aspectRatio = (old_width * wRatio) / (old_height * hRatio);
+            displayRatio = (float)maxWidth / (float)maxHeight;
+
+            if (aspectRatio >= displayRatio) {
+                new_height = old_width / aspectRatio;
+                if (new_height > maxHeight) {
+                    new_height = maxHeight;
+                    new_width = new_height * aspectRatio;
+                    wDelta = (new_width - old_width) / 2;
+                }
+                hDelta = (new_height - old_height) / 2;
+            } else {
+                new_width = old_height * aspectRatio;
+                if (new_width > maxWidth) {
+                    new_width = maxWidth;
+                    new_height = new_width / aspectRatio;
+                    hDelta = (new_height - old_height) / 2;
+                }
+                wDelta = (new_width - old_width) / 2;
+            }
+
+            if (hDelta != 0) {
+                visibleRect.top -= hDelta;
+                visibleRect.bottom += hDelta;
 
                 // Set mVertices for GPU fallback (During rotation)
-                if (orientation == 0) {
+                if (orientation == Transform::ROT_0) {
                     mVertices[1][1] = mVertices[2][1] = visibleRect.top;
                     mVertices[0][1] = mVertices[3][1] = visibleRect.bottom;
                 } else {
                     mVertices[0][1] = mVertices[3][1] = visibleRect.top;
                     mVertices[1][1] = mVertices[2][1] = visibleRect.bottom;
                 }
-            } else {
-                factor = old_height / hRatio;
-                new_width = factor * wRatio;
-                delta = (new_width - old_width) / 2;
-                visibleRect.left -= delta;
-                visibleRect.right += delta;
+            }
+
+            if (wDelta != 0) {
+                visibleRect.left -= wDelta;
+                visibleRect.right += wDelta;
 
                 // Set mVertices for GPU fallback (During rotation)
                 mVertices[0][0] = mVertices[1][0] = visibleRect.left;
@@ -815,32 +838,51 @@ void applyPixelAspectRatio (int wRatio, int hRatio, int orientation, int fbWidth
             }
             break;
 
-        case 4: // Rotation: 90
-        case 7: // Rotation: 270
-            if (fbHeight >= fbWidth) {
-                factor = old_width / hRatio;
-                new_width = factor * wRatio;
-                delta = (new_width - old_height) / 2;
-                visibleRect.top -= delta;
-                visibleRect.bottom += delta;
+        case Transform::ROT_90:
+        case Transform::ROT_270:
+
+            // Calculated Aspect Ratio = Original Aspect Ratio x Pixel Aspect Ratio
+            aspectRatio = (old_height * wRatio) / (old_width * hRatio);
+            displayRatio = (float)maxHeight / (float)maxWidth;
+
+            if (aspectRatio >= displayRatio) {
+                new_height = old_width * aspectRatio;
+                if (new_height > maxHeight) {
+                    new_height = maxHeight;
+                    new_width = new_height / aspectRatio;
+                    wDelta = (new_width - old_width) / 2;
+                }
+                hDelta = (new_height - old_height) / 2;
+            } else {
+                new_width = old_height / aspectRatio;
+                if (new_width > maxWidth) {
+                    new_width = maxWidth;
+                    new_height = new_width * aspectRatio;
+                    hDelta = (new_height - old_height) / 2;
+                }
+                wDelta = (new_width - old_width) / 2;
+            }
+
+            if (hDelta != 0) {
+                visibleRect.top -= hDelta;
+                visibleRect.bottom += hDelta;
 
                 // Set mVertices for GPU fallback (During rotation)
-                if (orientation == 4) {
+                if (orientation == Transform::ROT_90) {
                     mVertices[2][1] = mVertices[3][1] = visibleRect.top;
                     mVertices[0][1] = mVertices[1][1] = visibleRect.bottom;
                 } else {
                     mVertices[0][1] = mVertices[1][1] = visibleRect.top;
                     mVertices[2][1] = mVertices[3][1] = visibleRect.bottom;
                 }
-            } else {
-                factor = old_height / wRatio;
-                new_height = factor * hRatio;
-                delta = (new_height - old_width) / 2;
-                visibleRect.left -= delta;
-                visibleRect.right += delta;
+            }
+
+            if (wDelta != 0) {
+                visibleRect.left -= wDelta;
+                visibleRect.right += wDelta;
 
                 // Set mVertices for GPU fallback (During rotation)
-                if (orientation == 4) {
+                if (orientation == Transform::ROT_90) {
                     mVertices[1][0] = mVertices[2][0] = visibleRect.left;
                     mVertices[0][0] = mVertices[3][0] = visibleRect.right;
                 } else {
