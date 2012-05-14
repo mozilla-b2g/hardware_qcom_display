@@ -39,6 +39,10 @@ else
     LOCAL_SHARED_LIBRARIES += libmemalloc
 endif
 
+ifeq ($(TARGET_USES_MDP3), true)
+    LOCAL_CFLAGS += -DUSE_MDP3
+endif
+
 LOCAL_CFLAGS += -DDEBUG_CALC_FPS
 
 LOCAL_MODULE := libQcomUI

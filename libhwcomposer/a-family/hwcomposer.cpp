@@ -1189,7 +1189,7 @@ inline void getLayerResolution(const hwc_layer_t* layer, int& width, int& height
    height = displayFrame.bottom - displayFrame.top;
 }
 
-static bool canUseCopybit(const framebuffer_device_t* fbDev, const hwc_layer_list_t* list) {
+static bool canUseCopybit(const framebuffer_device_t* fbDev, const hwc_layer_list_t* list, const int numYUVBuffers) {
 
     if(!fbDev) {
        LOGE("ERROR: %s : fb device is invalid",__func__);
@@ -1198,6 +1198,11 @@ static bool canUseCopybit(const framebuffer_device_t* fbDev, const hwc_layer_lis
 
     if (!list)
         return false;
+
+#ifdef USE_MDP3
+    if (numYUVBuffers)
+        return true;
+#endif
 
     int fb_w = fbDev->width;
     int fb_h = fbDev->height;
@@ -1471,7 +1476,7 @@ static int hwc_prepare(hwc_composer_device_t *dev, hwc_layer_list_t* list) {
     bool skipComposition = false;
 
     if (list) {
-        useCopybit = canUseCopybit(hwcModule->fbDevice, list);
+        useCopybit = canUseCopybit(hwcModule->fbDevice, list, ctx->yuvBufferCount);
         // cache the number of layer(like YUV, SecureBuffer, notupdating etc.,)
         statCount(ctx, list);
         skipComposition = canSkipComposition(ctx, ctx->yuvBufferCount,

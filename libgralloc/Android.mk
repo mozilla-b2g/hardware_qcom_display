@@ -63,11 +63,9 @@ endif
 ifeq ($(call is-board-platform,msm7627_surf msm7627_6x),true)
     LOCAL_CFLAGS += -DTARGET_MSM7x27
 endif
-
-ifeq ($(call is-board-platform,msm7627a),true)
-    LOCAL_CFLAGS += -DMDPVERSION_31
+ifeq ($(TARGET_USES_MDP3), true)
+    LOCAL_CFLAGS += -DUSE_MDP3
 endif
-
 ifeq ($(TARGET_HAVE_HDMI_OUT),true)
     LOCAL_CFLAGS += -DHDMI_DUAL_DISPLAY
     LOCAL_SHARED_LIBRARIES += liboverlay

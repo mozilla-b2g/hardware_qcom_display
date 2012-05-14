@@ -947,7 +947,7 @@ int mapFrameBufferLocked(struct private_module_t* module)
                if (strncmp(property, "mdp", 3) == 0) {
                   module->fbFormat = HAL_PIXEL_FORMAT_RGBX_8888;
                } else if (strncmp(property, "dyn", 3) == 0) {
-#ifdef MDPVERSION_31
+#ifdef USE_MDP3
                   module->fbFormat = HAL_PIXEL_FORMAT_RGBX_8888;
 #else
                   module->fbFormat = HAL_PIXEL_FORMAT_RGBA_8888;
