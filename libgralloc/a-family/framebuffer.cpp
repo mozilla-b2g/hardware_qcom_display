@@ -282,7 +282,7 @@ static int startExternalChannel(private_module_t *m)
         info.width = alignedW;
         info.height = hnd->height;
         info.format = hnd->format;
-        info.size = hnd->size;
+        info.size = hnd->size / m->numBuffers;
 
         if (m->trueMirrorSupport)
             flags &= ~WAIT_FOR_VSYNC;
@@ -447,7 +447,7 @@ static void *hdmi_ui_loop(void *ptr)
             info.width = alignedW;
             info.height = hnd->height;
             info.format = hnd->format;
-            info.size = hnd->size;
+            info.size = hnd->size / m->numBuffers;
 
             ovutils::eMdpFlags mdpFlags = ovutils::OV_MDP_FLAGS_NONE;
             // External display connected during secure video playback

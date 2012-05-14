@@ -377,7 +377,7 @@ static void *hdmi_ui_loop(void *ptr)
             unsigned int width = alignedW;
             unsigned int height = hnd->height;
             unsigned int format = hnd->format;
-            unsigned int size = hnd->size;
+            unsigned int size = hnd->size/m->numBuffers;
 
             ovutils::eMdpFlags mdpFlags = ovutils::OV_MDP_FLAGS_NONE;
             // External display connected during secure video playback
