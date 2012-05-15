@@ -951,7 +951,7 @@ int mapFrameBufferLocked(struct private_module_t* module)
 #else
                   module->fbFormat = HAL_PIXEL_FORMAT_RGBA_8888;
 #endif
-               } else if (strncmp(property, "gpu", 3) ==0) {
+               } else {
                   module->fbFormat = HAL_PIXEL_FORMAT_RGBA_8888;
                }
           } else {
