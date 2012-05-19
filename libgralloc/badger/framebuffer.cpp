@@ -456,15 +456,24 @@ static int fb_videoOverlayStarted(struct framebuffer_device_t* dev, int started)
     pthread_mutex_lock(&m->overlayLock);
     if(started != m->videoOverlay) {
         m->videoOverlay = started;
+        m->hdmiStateChanged = true;
         if (!m->trueMirrorSupport) {
-            m->hdmiStateChanged = true;
             if (started) {
                 m->hdmiMirroringState = HDMI_NO_MIRRORING;
                 ovutils::eOverlayState state = getOverlayState(m);
                 setOverlayState(state);
             } else if (m->enableHDMIOutput)
                 m->hdmiMirroringState = HDMI_UI_MIRRORING;
-            pthread_cond_signal(&(m->overlayPost));
+        } else {
+            if (m->videoOverlay == VIDEO_3D_OVERLAY_STARTED) {
+                LOGE_IF(FB_DEBUG, "3D Video Started, stop mirroring!");
+                m->hdmiMirroringState = HDMI_NO_MIRRORING;
+                ovutils::eOverlayState state = getOverlayState(m);
+                setOverlayState(state);
+            }
+            else if (m->enableHDMIOutput) {
+                m->hdmiMirroringState = HDMI_UI_MIRRORING;
+            }
         }
     }
     pthread_mutex_unlock(&m->overlayLock);
