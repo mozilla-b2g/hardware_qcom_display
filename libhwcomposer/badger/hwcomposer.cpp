@@ -95,6 +95,7 @@ struct hwc_context_t {
     native_handle_t *currentOverlayHandle;
     int yuvBufferCount;
     int numLayersNotUpdating;
+    int s3dLayerFormat;
 #ifdef COMPOSITION_BYPASS
     native_handle_t* previousBypassHandle[MAX_BYPASS_LAYERS];
     BypassBufferLockState bypassBufferLockState[MAX_BYPASS_LAYERS];
@@ -1182,35 +1183,6 @@ static bool isValidDestination(const framebuffer_device_t* fbDev, const hwc_rect
     return true;
 }
 
-static int getS3DVideoFormat (const hwc_layer_list_t* list) {
-    int s3dFormat = 0;
-    if (list) {
-        for (size_t i=0; i<list->numHwLayers; i++) {
-            private_handle_t *hnd = (private_handle_t *)list->hwLayers[i].handle;
-            if (hnd && (hnd->bufferType == BUFFER_TYPE_VIDEO))
-                s3dFormat = FORMAT_3D_INPUT(hnd->format);
-            if (s3dFormat)
-                break;
-        }
-    }
-    return s3dFormat;
-}
-
-static int getS3DFormat (const hwc_layer_list_t* list) {
-    int s3dFormat = 0;
-    if (list) {
-        for (size_t i=0; i<list->numHwLayers; i++) {
-            private_handle_t *hnd = (private_handle_t *)list->hwLayers[i].handle;
-            if (hnd)
-                s3dFormat = FORMAT_3D_INPUT(hnd->format);
-            if (s3dFormat)
-                break;
-        }
-    }
-    return s3dFormat;
-}
-
-
 static bool isS3DCompositionRequired() {
 #ifdef HDMI_AS_PRIMARY
     return overlay::is3DTV();
@@ -1244,27 +1216,26 @@ static void markUILayerForS3DComposition (hwc_layer_t &layer, int s3dVideoFormat
  * */
 static void statCount(hwc_context_t *ctx, hwc_layer_list_t* list) {
     int yuvBufCount = 0;
-    int secureLayerCnt = 0;
     int layersNotUpdatingCount = 0;
-     if (list) {
-         for (size_t i=0 ; i<list->numHwLayers; i++) {
-             private_handle_t *hnd = (private_handle_t *)list->hwLayers[i].handle;
-            if (hnd && (hnd->bufferType == BUFFER_TYPE_VIDEO) &&
-               !(list->hwLayers[i].flags & HWC_DO_NOT_USE_OVERLAY)) {
-               yuvBufCount++;
+    int s3dLayerFormat = 0;
+    if (list) {
+        for (size_t i=0 ; i<list->numHwLayers; i++) {
+            private_handle_t *hnd = (private_handle_t *)list->hwLayers[i].handle;
+            if (hnd) {
+                if(hnd->bufferType == BUFFER_TYPE_VIDEO) {
+                    if(!(list->hwLayers[i].flags & HWC_DO_NOT_USE_OVERLAY))
+                        yuvBufCount++;
+                } else if (list->hwLayers[i].flags & HWC_LAYER_NOT_UPDATING)
+                        layersNotUpdatingCount++;
+                s3dLayerFormat = s3dLayerFormat ? s3dLayerFormat : FORMAT_3D_INPUT(hnd->format);
             }
-            if (hnd &&  (hnd->bufferType == BUFFER_TYPE_VIDEO) &&
-                    (hnd->flags & private_handle_t::PRIV_FLAGS_SECURE_BUFFER) ) {
-                secureLayerCnt++;
-            }
-             if (hnd && (hnd->bufferType != BUFFER_TYPE_VIDEO) &&
-
-               list->hwLayers[i].flags & HWC_LAYER_NOT_UPDATING) {
-               layersNotUpdatingCount++;
-            }
-         }
-     }
+        }
+    }
+    // Number of video/camera layers drawable with overlay
     ctx->yuvBufferCount = yuvBufCount;
+    // S3D layer count
+    ctx->s3dLayerFormat = s3dLayerFormat;
+    // number of non-updating layers
     ctx->numLayersNotUpdating = layersNotUpdatingCount;
     return;
  }
@@ -1343,9 +1314,8 @@ static int hwc_prepare(hwc_composer_device_t *dev, hwc_layer_list_t* list) {
         return -1;
     }
 
-    int layerType = 0;
+    int  layerType = 0;
     bool isS3DCompositionNeeded = false;
-    int s3dVideoFormat = 0;
     bool useCopybit = false;
     bool isSkipLayerPresent = false;
     bool skipComposition = false;
@@ -1357,18 +1327,19 @@ static int hwc_prepare(hwc_composer_device_t *dev, hwc_layer_list_t* list) {
         skipComposition = canSkipComposition(ctx, ctx->yuvBufferCount,
                                 list->numHwLayers, ctx->numLayersNotUpdating);
 
-        if ((ctx->yuvBufferCount == 0) && (ctx->hwcOverlayStatus == HWC_OVERLAY_OPEN)) {
-            ctx->hwcOverlayStatus = HWC_OVERLAY_PREPARE_TO_CLOSE;
+        /* If video is ending, unlock the previously locked buffer
+         * and close the overlay channels if opened
+         */
+        if (ctx->yuvBufferCount == 0) {
+            if (ctx->hwcOverlayStatus == HWC_OVERLAY_OPEN)
+                ctx->hwcOverlayStatus = HWC_OVERLAY_PREPARE_TO_CLOSE;
         }
 
-        if (ctx->yuvBufferCount == 1) {
-            s3dVideoFormat = getS3DVideoFormat(list);
-            if (s3dVideoFormat)
-                isS3DCompositionNeeded = isS3DCompositionRequired();
-        } else if((s3dVideoFormat = getS3DFormat(list))){
-            if (s3dVideoFormat)
-                isS3DCompositionNeeded = isS3DCompositionRequired();
-        }
+        /* If s3d layer is present, we may need to convert other layers to S3D
+         * Check if we need the S3D compostion for other layers
+         */
+        if (ctx->s3dLayerFormat)
+            isS3DCompositionNeeded = isS3DCompositionRequired();
 
         for (size_t i=0 ; i<list->numHwLayers ; i++) {
             private_handle_t *hnd = (private_handle_t *)list->hwLayers[i].handle;
@@ -1392,7 +1363,7 @@ static int hwc_prepare(hwc_composer_device_t *dev, hwc_layer_list_t* list) {
                 // During the animaton UI layers are marked as SKIP
                 // need to still mark the layer for S3D composition
                 if (isS3DCompositionNeeded)
-                    markUILayerForS3DComposition(list->hwLayers[i], s3dVideoFormat);
+                    markUILayerForS3DComposition(list->hwLayers[i], ctx->s3dLayerFormat);
 
                 list->hwLayers[i].compositionType = HWC_FRAMEBUFFER;
                 list->hwLayers[i].hints &= ~HWC_HINT_CLEAR_FB;
@@ -1449,7 +1420,7 @@ static int hwc_prepare(hwc_composer_device_t *dev, hwc_layer_list_t* list) {
                     ctx->hwcOverlayStatus = HWC_OVERLAY_OPEN;
                 }
             } else if (isS3DCompositionNeeded) {
-                markUILayerForS3DComposition(list->hwLayers[i], s3dVideoFormat);
+                markUILayerForS3DComposition(list->hwLayers[i], ctx->s3dLayerFormat);
             } else if (list->hwLayers[i].flags & HWC_USE_ORIGINAL_RESOLUTION) {
                 list->hwLayers[i].compositionType = HWC_USE_OVERLAY;
                 list->hwLayers[i].hints |= HWC_HINT_CLEAR_FB;
