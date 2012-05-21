@@ -382,6 +382,7 @@ static int stretch_copybit(
                 case HAL_PIXEL_FORMAT_BGRA_8888:
                 case HAL_PIXEL_FORMAT_RGBA_5551:
                 case HAL_PIXEL_FORMAT_RGBA_4444:
+                    LOGE ("%s : Unsupported Pixel format %d", __FUNCTION__, src->format);
                     return -EINVAL;
             }
         }
@@ -389,14 +390,21 @@ static int stretch_copybit(
         if (src_rect->l < 0 || src_rect->r > src->w ||
             src_rect->t < 0 || src_rect->b > src->h) {
             // this is always invalid
+            LOGE ("%s : Invalid source rectangle : src_rect l %d t %d r %d b %d",\
+                        __FUNCTION__, src_rect->l, src_rect->t, src_rect->r, src_rect->b);
+
             return -EINVAL;
         }
 
-        if (src->w > MAX_DIMENSION || src->h > MAX_DIMENSION)
+        if (src->w > MAX_DIMENSION || src->h > MAX_DIMENSION) {
+            LOGE ("%s : Invalid source dimensions w %d h %d", __FUNCTION__, src->w, src->h);
             return -EINVAL;
+        }
 
-        if (dst->w > MAX_DIMENSION || dst->h > MAX_DIMENSION)
+        if (dst->w > MAX_DIMENSION || dst->h > MAX_DIMENSION) {
+            LOGE ("%s : Invalid DST dimensions w %d h %d", __FUNCTION__, dst->w, dst->h);
             return -EINVAL;
+        }
 
         if(src->format ==  HAL_PIXEL_FORMAT_YV12) {
             int usage = GRALLOC_USAGE_PRIVATE_ADSP_HEAP | GRALLOC_USAGE_PRIVATE_MM_HEAP;
@@ -453,6 +461,7 @@ static int stretch_copybit(
             status = msm_copybit(ctx, &list);
         }
     } else {
+        LOGE ("%s : Invalid COPYBIT context", __FUNCTION__);
         status = -EINVAL;
     }
     if(yv12_handle)
