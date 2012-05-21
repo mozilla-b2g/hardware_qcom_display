@@ -147,10 +147,6 @@ struct private_hwc_module_t HAL_MODULE_INFO_SYM = {
    isBypassEnabled: false,
 };
 
-//Only at this point would the compiler know all storage class sizes.
-//The header has hooks which need to know those beforehand.
-#include "../a-family/external_display_only.h"
-
 /*****************************************************************************/
 
 static void dump_layer(hwc_layer_t const* l) {
@@ -596,10 +592,6 @@ inline static bool isBypassDoable(hwc_composer_device_t *dev, const int yuvCount
         return false;
     }
 #endif
-
-    if(ExtDispOnly::isModeOn()) {
-        return false;
-    }
 
     if(ctx->idleTimeOut) {
         ctx->idleTimeOut = false;
@@ -1088,12 +1080,9 @@ static void handleHDMIStateChange(hwc_composer_device_t *dev, int externaltype) 
                                                            dev->common.module);
     LOGE_IF(DEBUG_HWC, "%s: externaltype=%d", __FUNCTION__, externaltype);
 
-    //Route the event to fbdev only if we are in default mirror mode
-    if(ExtDispOnly::isModeOn() == false) {
-        framebuffer_device_t *fbDev = hwcModule->fbDevice;
-        if (fbDev) {
+    framebuffer_device_t *fbDev = hwcModule->fbDevice;
+    if (fbDev) {
             fbDev->perform(fbDev, EVENT_EXTERNAL_DISPLAY, externaltype);
-        }
     }
 #endif
 }
@@ -1310,7 +1299,6 @@ static int hwc_prepare(hwc_composer_device_t *dev, hwc_layer_list_t* list) {
         unsetBypassBufferLockState(ctx);
 #endif
         unlockPreviousOverlayBuffer(ctx);
-        ExtDispOnly::close();
         return -1;
     }
 
@@ -1427,8 +1415,6 @@ static int hwc_prepare(hwc_composer_device_t *dev, hwc_layer_list_t* list) {
                 list->hwLayers[i].compositionType = HWC_USE_OVERLAY;
                 list->hwLayers[i].hints |= HWC_HINT_CLEAR_FB;
                 layerType |= HWC_ORIG_RESOLUTION;
-            } else if (hnd && hnd->flags & private_handle_t::PRIV_FLAGS_EXTERNAL_ONLY) {
-                //handle later after other layers are handled
             } else if (hnd && (hwcModule->compositionType &
                     (COMPOSITION_TYPE_C2D|COMPOSITION_TYPE_MDP))) {
                 list->hwLayers[i].compositionType = HWC_USE_COPYBIT;
@@ -1440,9 +1426,6 @@ static int hwc_prepare(hwc_composer_device_t *dev, hwc_layer_list_t* list) {
                 list->hwLayers[i].compositionType = HWC_FRAMEBUFFER;
             }
         }
-
-        //Update the stats and pipe config for external-only layers
-        ExtDispOnly::update(ctx, list);
 
         if (skipComposition) {
             list->flags |= HWC_SKIP_COMPOSITION;
@@ -1897,7 +1880,6 @@ static int hwc_set(hwc_composer_device_t *dev,
     hwc_context_t* ctx = (hwc_context_t*)(dev);
     if(!ctx) {
         LOGE("hwc_set invalid context");
-        ExtDispOnly::close();
         return -1;
     }
 
@@ -1910,7 +1892,6 @@ static int hwc_set(hwc_composer_device_t *dev,
         unlockPreviousBypassBuffers(ctx);
         unsetBypassBufferLockState(ctx);
 #endif
-        ExtDispOnly::close();
         unlockPreviousOverlayBuffer(ctx);
         return -1;
     }
@@ -1925,9 +1906,6 @@ static int hwc_set(hwc_composer_device_t *dev,
                 dumpLayer(hwcModule->compositionType, list->flags, i, list->hwLayers);
             if (list->hwLayers[i].flags & HWC_SKIP_LAYER) {
                 continue;
-            } else if(list->hwLayers[i].flags & HWC_USE_EXT_ONLY) {
-                continue;
-            //Draw after layers for primary are drawn
 #ifdef COMPOSITION_BYPASS
             } else if (list->hwLayers[i].flags & HWC_COMP_BYPASS) {
                 ctx->idleTimer.reset();
@@ -1951,10 +1929,6 @@ static int hwc_set(hwc_composer_device_t *dev,
     }
 
     bool canSkipComposition = list && list->flags & HWC_SKIP_COMPOSITION;
-    //Draw External-only layers
-    if(ExtDispOnly::draw(ctx, list) != overlay::NO_ERROR) {
-        ExtDispOnly::close();
-    }
 
 #ifdef COMPOSITION_BYPASS
     unlockPreviousBypassBuffers(ctx);
@@ -2051,9 +2025,6 @@ static int hwc_device_close(struct hw_device_t *dev)
             unlockPreviousBypassBuffers(ctx);
             unsetBypassBufferLockState(ctx);
 #endif
-        ExtDispOnly::close();
-        ExtDispOnly::destroy();
-
         free(ctx);
     }
     return 0;
@@ -2152,7 +2123,6 @@ static int hwc_device_open(const struct hw_module_t* module, const char* name,
         dev->idleTimer.setFreq(idle_timeout);
         dev->idleTimeOut = false;
 #endif
-        ExtDispOnly::init();
 #if defined HDMI_DUAL_DISPLAY
         dev->mHDMIEnabled = EXT_TYPE_NONE;
         dev->pendingHDMI = false;
