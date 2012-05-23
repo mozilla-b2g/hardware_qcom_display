@@ -52,14 +52,6 @@
 #include <utils/profiler.h>
 #include <qcom_ui.h>
 
-#ifdef USE_OVERLAY2
-#include "src/overlayUtils.h"
-#include "src/overlay.h"
-#include "src/overlayMgr.h"
-#include "src/overlayMgrSingleton.h"
-namespace ovutils = overlay2::utils;
-#endif
-
 #define FB_DEBUG 0
 
 #if defined(HDMI_DUAL_DISPLAY)
@@ -331,69 +323,6 @@ static int startExternalChannel(private_module_t *m)
     return success ? 0 : -1;
 }
 
-#ifdef USE_OVERLAY2
-/* Determine overlay state based on whether hardware supports true UI
-   mirroring and whether video is playing or not */
-static ovutils::eOverlayState getOverlayState(struct private_module_t* module)
-{
-    overlay2::OverlayMgr* ovMgr =
-            overlay2::OverlayMgrSingleton::getOverlayMgr();
-    overlay2::Overlay& ov = ovMgr->ov();
-
-    // Default to existing state
-    ovutils::eOverlayState state = ov.getState();
-
-    // Sanity check
-    if (!module) {
-        LOGE("%s: NULL module", __FUNCTION__);
-        return state;
-    }
-
-    // Check if video is playing or not
-    if (module->videoOverlay) {
-        // Video is playing, check if hardware supports true UI mirroring
-        if (module->trueMirrorSupport) {
-            // True UI mirroring is supported by hardware
-            if (ov.getState() == ovutils::OV_2D_VIDEO_ON_PANEL) {
-                // Currently playing 2D video
-                state = ovutils::OV_2D_TRUE_UI_MIRROR;
-            } else if (ov.getState() == ovutils::OV_3D_VIDEO_ON_2D_PANEL) {
-                // Currently playing M3D video
-                // FIXME: Support M3D true UI mirroring
-                state = ovutils::OV_3D_VIDEO_ON_2D_PANEL_2D_TV;
-            }
-        } else {
-            // True UI mirroring is not supported by hardware
-            if (ov.getState() == ovutils::OV_2D_VIDEO_ON_PANEL) {
-                // Currently playing 2D video
-                state = ovutils::OV_2D_VIDEO_ON_PANEL_TV;
-            } else if (ov.getState() == ovutils::OV_3D_VIDEO_ON_2D_PANEL) {
-                // Currently playing M3D video
-                state = ovutils::OV_3D_VIDEO_ON_2D_PANEL_2D_TV;
-            }
-        }
-    } else {
-        // Video is not playing, true UI mirroring support is irrelevant
-        state = ovutils::OV_UI_MIRROR;
-    }
-
-    return state;
-}
-
-/* Set overlay state */
-static void setOverlayState(ovutils::eOverlayState state)
-{
-    overlay2::OverlayMgr* ovMgr =
-            overlay2::OverlayMgrSingleton::getOverlayMgr();
-    if (!ovMgr) {
-        LOGE("%s: NULL ovMgr", __FUNCTION__);
-        return;
-    }
-
-    ovMgr->setState(state);
-}
-#endif // USE_OVERLAY2
-
 static void *hdmi_ui_loop(void *ptr)
 {
     private_module_t* m = reinterpret_cast<private_module_t*>(ptr);
@@ -408,112 +337,6 @@ static void *hdmi_ui_loop(void *ptr)
             return NULL;
         }
 
-#ifdef USE_OVERLAY2
-        // No need to mirror UI if HDMI is not on
-        if (!m->enableHDMIOutput) {
-            LOGE_IF(FB_DEBUG, "%s: hdmi not ON", __FUNCTION__);
-            pthread_mutex_unlock(&m->overlayLock);
-            continue;
-        }
-
-        overlay2::OverlayMgr* ovMgr =
-            overlay2::OverlayMgrSingleton::getOverlayMgr();
-        overlay2::Overlay& ov = ovMgr->ov();
-
-        // Set overlay state
-        ovutils::eOverlayState state = getOverlayState(m);
-        setOverlayState(state);
-
-        // Determine the RGB pipe for UI depending on the state
-        ovutils::eDest dest = ovutils::OV_PIPE_ALL;
-        if (state == ovutils::OV_2D_TRUE_UI_MIRROR) {
-            // True UI mirroring state: external RGB pipe is OV_PIPE2
-            dest = ovutils::OV_PIPE2;
-        } else if (state == ovutils::OV_UI_MIRROR) {
-            // UI-only mirroring state: external RGB pipe is OV_PIPE0
-            dest = ovutils::OV_PIPE0;
-        } else {
-            // No UI in this case
-            pthread_mutex_unlock(&m->overlayLock);
-            continue;
-        }
-
-        if (m->hdmiMirroringState == HDMI_UI_MIRRORING) {
-            int alignedW = ALIGN(m->info.xres, 32);
-
-            private_handle_t const* hnd =
-                reinterpret_cast<private_handle_t const*>(m->framebuffer);
-            overlay_buffer_info info;
-            info.width = alignedW;
-            info.height = hnd->height;
-            info.format = hnd->format;
-            info.size = hnd->size / m->numBuffers;
-
-            ovutils::eMdpFlags mdpFlags = ovutils::OV_MDP_FLAGS_NONE;
-            // External display connected during secure video playback
-            // Open secure UI session
-            // NOTE: when external display is already connected and then secure
-            // playback is started, we dont have to do anything
-            if (m->secureVideoOverlay) {
-                ovutils::setMdpFlags(mdpFlags, ovutils::OV_MDP_SECURE_OVERLAY_SESSION);
-            }
-
-            ovutils::Whf whf(info.width, info.height, info.format, info.size);
-            ovutils::PipeArgs parg(mdpFlags,
-                                   ovutils::OVERLAY_TRANSFORM_0,
-                                   whf,
-                                   ovutils::WAIT,
-                                   ovutils::ZORDER_0,
-                                   ovutils::IS_FG_OFF,
-                                   ovutils::ROT_FLAG_ENABLED,
-                                   ovutils::PMEM_SRC_SMI,
-                                   ovutils::RECONFIG_OFF);
-            ovutils::PipeArgs pargs[ovutils::MAX_PIPES] = { parg, parg, parg };
-            bool ret = ov.setSource(pargs, dest);
-            if (!ret) {
-                LOGE("%s setSource failed", __FUNCTION__);
-            }
-
-            // we need to communicate m->orientation that will get some
-            // modifications within setParameter func.
-            // FIXME that is ugly.
-            const ovutils::Params prms (ovutils::OVERLAY_TRANSFORM_UI,
-                                        m->orientation);
-            ov.setParameter(prms, dest);
-            if (!ret) {
-                LOGE("%s setParameter failed transform", __FUNCTION__);
-            }
-
-            // x,y,w,h
-            ovutils::Dim dcrop(0, 0, m->info.xres, m->info.yres);
-            ov.setMemoryId(m->framebuffer->fd, dest);
-            ret = ov.setCrop(dcrop, dest);
-            if (!ret) {
-                LOGE("%s setCrop failed", __FUNCTION__);
-            }
-
-            ovutils::Dim pdim (m->info.xres,
-                               m->info.yres,
-                               0,
-                               0,
-                               m->orientation);
-            ret = ov.setPosition(pdim, dest);
-            if (!ret) {
-                LOGE("%s setPosition failed", __FUNCTION__);
-            }
-
-            if (!ov.commit(dest)) {
-                LOGE("%s commit fails", __FUNCTION__);
-            }
-
-            ret = ov.queueBuffer(m->currentOffset, dest);
-            if (!ret) {
-                LOGE("%s queueBuffer failed", __FUNCTION__);
-            }
-        } else {
-            setOverlayState(ovutils::OV_CLOSED);
-        }
-#else
         int flags = WAIT_FOR_VSYNC;
         const int NO_ERROR = 0;
         Overlay* pTemp = m->pobjOverlay;
@@ -522,7 +345,6 @@ static void *hdmi_ui_loop(void *ptr)
                 pTemp->queueBuffer(m->currentOffset);
             }
         }
-#endif // USE_OVERLAY2
         pthread_mutex_unlock(&m->overlayLock);
     }
     return NULL;
@@ -540,12 +362,7 @@ static int fb_videoOverlayStarted(struct framebuffer_device_t* dev, int started)
         if (!m->trueMirrorSupport) {
             if (started) {
                 m->hdmiMirroringState = HDMI_NO_MIRRORING;
-#ifdef USE_OVERLAY2
-                ovutils::eOverlayState state = getOverlayState(m);
-                setOverlayState(state);
-#else
                 closeExternalChannel(m);
-#endif
             } else if (m->enableHDMIOutput)
                 m->hdmiMirroringState = HDMI_UI_MIRRORING;
         } else {
@@ -570,11 +387,7 @@ static int fb_enableHDMIOutput(struct framebuffer_device_t* dev, int externaltyp
             dev->common.module);
     pthread_mutex_lock(&m->overlayLock);
     //Check if true mirroring can be supported
-#ifdef USE_OVERLAY2
-    m->trueMirrorSupport = ovutils::FrameBufferInfo::getInstance()->supportTrueMirroring();
-#else
     m->trueMirrorSupport = FrameBufferInfo::getInstance()->canSupportTrueMirroring();
-#endif
     m->enableHDMIOutput = externaltype;
     if(externaltype) {
         if (m->trueMirrorSupport) {
@@ -586,12 +399,7 @@ static int fb_enableHDMIOutput(struct framebuffer_device_t* dev, int externaltyp
     } else if (!externaltype) {
         // Either HDMI is disconnected or suspend occurred
         m->hdmiMirroringState = HDMI_NO_MIRRORING;
-#ifdef USE_OVERLAY2
-        ovutils::eOverlayState state = getOverlayState(m);
-        setOverlayState(state);
-#else
         closeExternalChannel(m);
-#endif
     }
     if(m->hdmiMirroringState == HDMI_UI_MIRRORING) {
         startExternalChannel(m);
