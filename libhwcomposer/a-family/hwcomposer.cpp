@@ -1640,7 +1640,8 @@ static int hwc_set(hwc_composer_device_t *dev,
             }
         }
     } else {
-        ctx->hwcOverlayStatus =  HWC_OVERLAY_PREPARE_TO_CLOSE;
+            if (ctx->hwcOverlayStatus == HWC_OVERLAY_OPEN)
+                ctx->hwcOverlayStatus =  HWC_OVERLAY_PREPARE_TO_CLOSE;
     }
 
     bool canSkipComposition = list && list->flags & HWC_SKIP_COMPOSITION;

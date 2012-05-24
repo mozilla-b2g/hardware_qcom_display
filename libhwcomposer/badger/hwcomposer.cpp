@@ -1946,7 +1946,8 @@ static int hwc_set(hwc_composer_device_t *dev,
 #ifdef COMPOSITION_BYPASS
         ctx->nPipesUsed = 0;
 #endif
-        ctx->hwcOverlayStatus =  HWC_OVERLAY_PREPARE_TO_CLOSE;
+        if (ctx->hwcOverlayStatus == HWC_OVERLAY_OPEN)
+            ctx->hwcOverlayStatus =  HWC_OVERLAY_PREPARE_TO_CLOSE;
     }
 
     bool canSkipComposition = list && list->flags & HWC_SKIP_COMPOSITION;
