@@ -44,13 +44,6 @@
 #include <utils/profiler.h>
 #include <utils/IdleTimer.h>
 
-#ifdef USE_OVERLAY2
-#include <src/overlayMgr.h>
-#include <src/overlayMgrSingleton.h>
-#include <src/overlay.h>
-namespace ovutils = overlay2::utils;
-#endif
-
 /*****************************************************************************/
 #define ALIGN(x, align) (((x) + ((align)-1)) & ~((align)-1))
 #define LIKELY( exp )       (__builtin_expect( (exp) != 0, true  ))
@@ -92,20 +85,14 @@ enum eHWCOverlayStatus {
 struct hwc_context_t {
     hwc_composer_device_t device;
     /* our private state goes below here */
-#ifdef USE_OVERLAY2
-    overlay2::OverlayMgr* mOverlayLibObject;
-#else
     overlay::Overlay* mOverlayLibObject;
-#endif
     native_handle_t *previousOverlayHandle;
     native_handle_t *currentOverlayHandle;
     int yuvBufferCount;
     int numLayersNotUpdating;
     int s3dLayerFormat;
 #ifdef COMPOSITION_BYPASS
-#ifndef USE_OVERLAY2
     overlay::OverlayUI* mOvUI[MAX_BYPASS_LAYERS];
-#endif
     native_handle_t* previousBypassHandle[MAX_BYPASS_LAYERS];
     BypassBufferLockState bypassBufferLockState[MAX_BYPASS_LAYERS];
     int layerindex[MAX_BYPASS_LAYERS];
@@ -185,124 +172,6 @@ static inline int min(const int& a, const int& b) {
 static inline int max(const int& a, const int& b) {
     return (a > b) ? a : b;
 }
-
-#ifdef USE_OVERLAY2
-/* Determine overlay state based on decoded video info */
-static ovutils::eOverlayState getOverlayState(hwc_context_t* ctx,
-                                              uint32_t bypassLayer,
-                                              uint32_t format)
-{
-    ovutils::eOverlayState state = ovutils::OV_CLOSED;
-
-    // Sanity check
-    if (!ctx) {
-        LOGE("%s: NULL ctx", __FUNCTION__);
-        return state;
-    }
-
-    overlay2::Overlay& ov = ctx->mOverlayLibObject->ov();
-    state = ov.getState();
-
-    // If there are any bypassLayers, state is based on number of layers
-    if ((bypassLayer > 0) && (ctx->mHDMIEnabled == EXT_TYPE_NONE)) {
-        if (bypassLayer == 1) {
-            state = ovutils::OV_BYPASS_1_LAYER;
-        } else if (bypassLayer == 2) {
-            state = ovutils::OV_BYPASS_2_LAYER;
-        } else if (bypassLayer == 3) {
-            state = ovutils::OV_BYPASS_3_LAYER;
-        }
-        return state;
-    }
-
-    // RGB is ambiguous for determining overlay state
-    if (ovutils::isRgb(ovutils::getMdpFormat(format))) {
-        return state;
-    }
-
-    // Content type is either 2D or 3D
-    uint32_t fmt3D = ovutils::getS3DFormat(format);
-
-    // Determine state based on the external display, content type, and hw type
-    if (ctx->mHDMIEnabled == EXT_TYPE_HDMI) {
-        // External display is HDMI
-        if (fmt3D) {
-            // Content type is 3D
-            if (ovutils::is3DTV()) {
-                // TV panel type is 3D
-                state = ovutils::OV_3D_VIDEO_ON_3D_TV;
-            } else {
-                // TV panel type is 2D
-                state = ovutils::OV_3D_VIDEO_ON_2D_PANEL_2D_TV;
-            }
-        } else {
-            // Content type is 2D
-            if (ovutils::FrameBufferInfo::getInstance()->supportTrueMirroring()) {
-                // True UI mirroring is supported
-                state = ovutils::OV_2D_TRUE_UI_MIRROR;
-            } else {
-                // True UI mirroring is not supported
-                state = ovutils::OV_2D_VIDEO_ON_PANEL_TV;
-            }
-        }
-    } else if (ctx->mHDMIEnabled == EXT_TYPE_WIFI) {
-        // External display is Wifi (currently unsupported)
-        LOGE("%s: WIFI external display is unsupported", __FUNCTION__);
-        return state;
-    } else {
-        // No external display (primary panel only)
-        if (fmt3D) {
-            // Content type is 3D
-            if (ovutils::usePanel3D()) {
-                // Primary panel type is 3D
-                state = ovutils::OV_3D_VIDEO_ON_3D_PANEL;
-            } else {
-                // Primary panel type is 2D
-                state = ovutils::OV_3D_VIDEO_ON_2D_PANEL;
-            }
-        } else {
-            // Content type is 2D
-            state = ovutils::OV_2D_VIDEO_ON_PANEL;
-        }
-    }
-
-    return state;
-}
-
-/* Set overlay state */
-static void setOverlayState(hwc_context_t* ctx, ovutils::eOverlayState state)
-{
-    // Sanity check
-    if (!ctx) {
-        LOGE("%s: NULL ctx", __FUNCTION__);
-        return;
-    }
-
-    private_hwc_module_t* hwcModule = reinterpret_cast<private_hwc_module_t*>(
-                                                    ctx->device.common.module);
-    if (!hwcModule) {
-        LOGE("%s: NULL hwcModule", __FUNCTION__);
-        return;
-    }
-
-    framebuffer_device_t *fbDev = hwcModule->fbDevice;
-    if (!fbDev) {
-        LOGE("%s: NULL fbDev", __FUNCTION__);
-        return;
-    }
-
-    overlay2::OverlayMgr *ovMgr = ctx->mOverlayLibObject;
-    if (!ovMgr) {
-        LOGE("%s: NULL ovMgr", __FUNCTION__);
-        return;
-    }
-
-    // Using perform ensures a lock on overlay is obtained before changing state
-    fbDev->perform(fbDev, EVENT_OVERLAY_STATE_CHANGE, OVERLAY_STATE_CHANGE_START);
-    ovMgr->setState(state);
-    fbDev->perform(fbDev, EVENT_OVERLAY_STATE_CHANGE, OVERLAY_STATE_CHANGE_END);
-}
-#endif // USE_OVERLAY2
 
 #ifdef COMPOSITION_BYPASS
 static void timeout_handler(void *udata) {
@@ -454,12 +323,7 @@ void calculate_crop_rects(hwc_rect_t& crop, hwc_rect_t& dst, int hw_w, int hw_h)
 static int prepareBypass(hwc_context_t *ctx, hwc_layer_t *layer,
                          int nPipeIndex, int vsync_wait, int isFG) {
 
-#ifdef USE_OVERLAY2
-    if (ctx && layer) {
-#else
     if (ctx && ctx->mOvUI[nPipeIndex]) {
-#endif
-
         private_hwc_module_t* hwcModule = reinterpret_cast<
                 private_hwc_module_t*>(ctx->device.common.module);
         if (!hwcModule) {
@@ -512,75 +376,6 @@ static int prepareBypass(hwc_context_t *ctx, hwc_layer_t *layer,
             dst_h = hw_h;
         }
 
-#ifdef USE_OVERLAY2
-        overlay2::OverlayMgr *ovMgr = ctx->mOverlayLibObject;
-        overlay2::Overlay& ov = ovMgr->ov();
-
-        // Determine pipe to set based on pipe index
-        ovutils::eDest dest = ovutils::OV_PIPE_ALL;
-        if (nPipeIndex == 0) {
-            dest = ovutils::OV_PIPE0;
-        } else if (nPipeIndex == 1) {
-            dest = ovutils::OV_PIPE1;
-        } else if (nPipeIndex == 2) {
-            dest = ovutils::OV_PIPE2;
-        }
-
-        // Order order order
-        // setSource - just setting source
-        // setParameter - changes src w/h/f accordingly
-        // setCrop - ROI - src_rect
-        // setPosition - dst_rect
-        // commit - commit changes to mdp driver
-        // queueBuffer - not here, happens when draw is called
-
-        ovutils::eTransform orient =
-            static_cast<ovutils::eTransform>(layer->transform);
-
-        ovutils::Whf info(hnd->width, hnd->height, hnd->format, hnd->size);
-
-        ovutils::PipeArgs parg(ovutils::OV_MDP_FLAGS_NONE,
-                               orient,
-                               info,
-                               ovutils::NO_WAIT,
-                               ovutils::ZORDER_0,
-                               ovutils::IS_FG_OFF,
-                               ovutils::ROT_FLAG_DISABLED,
-                               ovutils::PMEM_SRC_SMI,
-                               ovutils::RECONFIG_OFF);
-        ovutils::PipeArgs pargs[ovutils::MAX_PIPES] = { parg, parg, parg };
-        if (!ov.setSource(pargs, dest)) {
-            LOGE("%s: setSource failed", __FUNCTION__);
-            return -1;
-        }
-
-        const ovutils::Params prms (ovutils::OVERLAY_TRANSFORM, orient);
-        if (!ov.setParameter(prms, dest)) {
-            LOGE("%s: setParameter failed transform %x", __FUNCTION__, orient);
-            return -1;
-        }
-
-        ovutils::Dim dcrop(crop.left, crop.top, crop_w, crop_h);
-        if (!ov.setCrop(dcrop, dest)) {
-            LOGE("%s: setCrop failed", __FUNCTION__);
-            return -1;
-        }
-
-        ovutils::Dim dim(dst.left, dst.top, dst_w, dst_h);
-        if (!ov.setPosition(dim, dest)) {
-            LOGE("%s: setPosition failed", __FUNCTION__);
-            return -1;
-        }
-
-        LOGE_IF(BYPASS_DEBUG,"%s: Bypass set: crop[%d,%d,%d,%d] dst[%d,%d,%d,%d] nPipe: %d",
-                __FUNCTION__, dcrop.x, dcrop.y, dcrop.w, dcrop.h,
-                dim.x, dim.y, dim.w, dim.h, nPipeIndex);
-
-        if (!ov.commit(dest)) {
-            LOGE("%s: commit failed", __FUNCTION__);
-            return -1;
-        }
-#else
         overlay::OverlayUI *ovUI = ctx->mOvUI[nPipeIndex];
         overlay_buffer_info info;
         info.width = hnd->width;
@@ -612,7 +407,6 @@ static int prepareBypass(hwc_context_t *ctx, hwc_layer_t *layer,
             LOGE("%s: Overlay Commit failed", __FUNCTION__);
             return -1;
         }
-#endif // USE_OVERLAY2
     }
     return 0;
 }
@@ -712,12 +506,6 @@ bool setupBypass(hwc_context_t* ctx, hwc_layer_list_t* list) {
     int nPipeIndex, vsync_wait, isFG;
     int numHwLayers = list->numHwLayers;
     int nPipeAvailable = MAX_BYPASS_LAYERS;
-
-#ifdef USE_OVERLAY2
-    // Determine bypass state based on number of layers and then set the state
-    ovutils::eOverlayState state = getOverlayState(ctx, numHwLayers, 0);
-    setOverlayState(ctx, state);
-#endif
 
     for (int index = 0 ; (index < numHwLayers) && nPipeAvailable; index++) {
 
@@ -869,29 +657,17 @@ static int setVideoOverlayStatusInGralloc(hwc_context_t* ctx, const int value) {
 
 static int hwc_closeOverlayChannels(hwc_context_t* ctx) {
 #ifdef USE_OVERLAY
-#ifndef USE_OVERLAY2
     overlay::Overlay *ovLibObject = ctx->mOverlayLibObject;
     if(!ovLibObject) {
         LOGE("%s: invalid params", __FUNCTION__);
         return -1;
     }
-#endif
 
     if (HWC_OVERLAY_PREPARE_TO_CLOSE == ctx->hwcOverlayStatus) {
         // Video mirroring is going on, and we do not have any layers to
         // mirror directly. Close the current video channel and inform the
         // gralloc to start UI mirroring
-#ifdef USE_OVERLAY2
-        if (ctx->mHDMIEnabled == EXT_TYPE_NONE) {
-            LOGE_IF(DEBUG_HWC, "%s: No HDMI so close", __FUNCTION__);
-            setOverlayState(ctx, ovutils::OV_CLOSED);
-        } else {
-            LOGE_IF(DEBUG_HWC, "%s: HDMI on so UI mirror", __FUNCTION__);
-            setOverlayState(ctx, ovutils::OV_UI_MIRROR);
-        }
-#else
         ovLibObject->closeChannel();
-#endif
         // Inform the gralloc that video overlay has stopped.
         setVideoOverlayStatusInGralloc(ctx, VIDEO_OVERLAY_ENDED);
         ctx->hwcOverlayStatus = HWC_OVERLAY_CLOSED;
@@ -907,9 +683,6 @@ static int hwc_closeOverlayChannels(hwc_context_t* ctx) {
 static int prepareOverlay(hwc_context_t *ctx,
                           hwc_layer_t *layer,
                           const int flags) {
-#ifdef USE_OVERLAY2
-    ovutils::Timer t("prepareOverlay");
-#endif
     int ret = 0;
 
 #ifdef COMPOSITION_BYPASS
@@ -931,126 +704,6 @@ static int prepareOverlay(hwc_context_t *ctx,
         }
 
         private_handle_t *hnd = (private_handle_t *)layer->handle;
-
-#ifdef USE_OVERLAY2
-        overlay2::OverlayMgr *ovLibObject = ctx->mOverlayLibObject;
-        overlay2::Overlay& ov = ovLibObject->ov();
-        ovutils::Whf info(hnd->width, hnd->height, hnd->format, hnd->size);
-
-        // Set overlay state
-        ovutils::eOverlayState state = getOverlayState(ctx, 0, info.format);
-        setOverlayState(ctx, state);
-
-        ovutils::eDest dest = ovutils::OV_PIPE_ALL;
-
-        // In the true UI mirroring case, video needs to go to OV_PIPE0 (for
-        // primary) and OV_PIPE1 (for external)
-        if (state == ovutils::OV_2D_TRUE_UI_MIRROR) {
-            dest = static_cast<ovutils::eDest>(
-                ovutils::OV_PIPE0 | ovutils::OV_PIPE1);
-        }
-
-        // that will make sure reconf is reset at that point
-        (void)ov.reconfigure(ovutils::ReconfArgs());
-
-        // Order order order
-        // setSource - just setting source
-        // setParameter - changes src w/h/f accordingly
-        // setCrop - ROI - that is src_rect
-        // setPosition - need to do scaling
-        // commit - commit changes to mdp driver
-        // queueBuffer - not here, happens when draw is called
-
-        ovutils::eMdpFlags mdpFlags = ovutils::OV_MDP_FLAGS_NONE;
-        if (hnd->flags & private_handle_t::PRIV_FLAGS_SECURE_BUFFER) {
-            ovutils::setMdpFlags(mdpFlags, ovutils::OV_MDP_SECURE_OVERLAY_SESSION);
-        }
-
-        // FIXME: Use source orientation for TV when source is portrait
-        int transform = layer->transform & FINAL_TRANSFORM_MASK;
-        ovutils::eTransform orient =
-            static_cast<ovutils::eTransform>(transform);
-
-        ovutils::eWait waitFlag = ovutils::NO_WAIT;
-        if (flags & WAIT_FOR_VSYNC) {
-            waitFlag = ovutils::WAIT;
-        }
-
-        ovutils::PipeArgs parg(mdpFlags,
-                               orient,
-                               info,
-                               waitFlag,
-                               ovutils::ZORDER_0,
-                               ovutils::IS_FG_OFF,
-                               ovutils::ROT_FLAG_DISABLED,
-                               ovutils::PMEM_SRC_SMI,
-                               ovutils::RECONFIG_OFF);
-        ovutils::PipeArgs pargs[ovutils::MAX_PIPES] = { parg, parg, parg };
-        ret = ov.setSource(pargs, dest);
-        if (!ret) {
-            LOGE("%s: setSource failed", __FUNCTION__);
-            return -1;
-        }
-
-        const ovutils::Params prms (ovutils::OVERLAY_TRANSFORM, orient);
-        ret = ov.setParameter(prms, dest);
-        if (!ret) {
-            LOGE("%s: setParameter failed transform %x", __FUNCTION__, orient);
-            return -1;
-        }
-
-        hwc_rect_t sourceCrop = layer->sourceCrop;
-        // x,y,w,h
-        ovutils::Dim dcrop(sourceCrop.left, sourceCrop.top, // x, y
-                           sourceCrop.right - sourceCrop.left, // w
-                           sourceCrop.bottom - sourceCrop.top);// h
-        ret = ov.setCrop(dcrop, dest);
-        if (!ret) {
-            LOGE("%s: setCrop failed", __FUNCTION__);
-            return -1;
-        }
-
-        int orientation = 0;
-#if defined HDMI_DUAL_DISPLAY
-        // Get the device orientation
-        if (hwcModule) {
-            framebuffer_device_t *fbDev = reinterpret_cast<framebuffer_device_t*>
-                                                            (hwcModule->fbDevice);
-            if (fbDev) {
-                private_module_t* m = reinterpret_cast<private_module_t*>(
-                                                         fbDev->common.module);
-                if (m)
-                    orientation = m->orientation;
-            }
-        }
-#endif
-        ovutils::Dim dim;
-        if (layer->flags & HWC_USE_ORIGINAL_RESOLUTION) {
-            framebuffer_device_t* fbDev = hwcModule->fbDevice;
-            dim.x = 0;
-            dim.y = 0;
-            dim.w = fbDev->width;
-            dim.h = fbDev->height;
-            dim.o = orientation;
-        } else {
-            hwc_rect_t displayFrame = layer->displayFrame;
-            dim.x = displayFrame.left;
-            dim.y = displayFrame.top;
-            dim.w = (displayFrame.right - displayFrame.left);
-            dim.h = (displayFrame.bottom - displayFrame.top);
-            dim.o = orientation;
-        }
-
-        ret = ov.setPosition(dim, dest);
-        if (!ret) {
-            LOGE("%s: setPosition failed", __FUNCTION__);
-            return -1;
-        }
-        if (!ov.commit(dest)) {
-            LOGE("%s: commit fails", __FUNCTION__);
-            return -1;
-        }
-#else
         overlay::Overlay *ovLibObject = ctx->mOverlayLibObject;
         overlay_buffer_info info;
         info.width = hnd->width;
@@ -1113,7 +766,6 @@ static int prepareOverlay(hwc_context_t *ctx,
             LOGE("prepareOverlay setPosition failed");
             return -1;
         }
-#endif // USE_OVERLAY2
     }
     return 0;
 }
@@ -1235,7 +887,6 @@ static void handleHDMIStateChange(hwc_composer_device_t *dev, int externaltype) 
         if (fbDev) {
             fbDev->perform(fbDev, EVENT_EXTERNAL_DISPLAY, externaltype);
         }
-#ifndef USE_OVERLAY2
         hwc_context_t* ctx = (hwc_context_t*)(dev);
         if(ctx && ctx->mOverlayLibObject) {
             overlay::Overlay *ovLibObject = ctx->mOverlayLibObject;
@@ -1244,7 +895,6 @@ static void handleHDMIStateChange(hwc_composer_device_t *dev, int externaltype) 
                 ovLibObject->closeExternalChannel();
             }
         }
-#endif
     }
 #endif
 }
@@ -1391,63 +1041,7 @@ static void statCount(hwc_context_t *ctx, hwc_layer_list_t* list) {
     return;
  }
 
-#ifdef USE_OVERLAY2
-static int prepareForReconfiguration(hwc_context_t *ctx, hwc_layer_t *layer)
-{
-   LOGD("prepareForReconfiguration E");
-   if(!ctx || !layer) {
-      LOGE("prepareForReconfiguration invalid context or layer");
-      return -1;
-   }
-
-   private_handle_t *hnd = (private_handle_t *)layer->handle;
-   overlay2::OverlayMgr *ovLibObject = ctx->mOverlayLibObject;
-   overlay2::Overlay& ov = ovLibObject->ov();
-
-   ovutils::Whf info;
-   info.w = hnd->width;
-   info.h = hnd->height;
-   info.format = hnd->format;
-   info.size = hnd->size;
-
-   ovutils::eTransform orient =
-      static_cast<ovutils::eTransform>(layer->transform);
-
-   hwc_rect_t sourceCrop = layer->sourceCrop;
-   // x,y,w,h
-   ovutils::Dim crop(sourceCrop.left, sourceCrop.top, // x, y
-                     sourceCrop.right - sourceCrop.left, // w
-                     sourceCrop.bottom - sourceCrop.top);// h
-
-   hwc_rect_t displayFrame = layer->displayFrame;
-   ovutils::Dim pos(displayFrame.left, displayFrame.top, //x,y
-                    (displayFrame.right - displayFrame.left), //w
-                    (displayFrame.bottom - displayFrame.top)); //h
-
-   ovutils::PlayInfo playInfo;
-   playInfo.fd = hnd->fd;
-   playInfo.offset = hnd->offset;
-
-   ovutils::ReconfArgs arg(info,
-                           crop,
-                           pos,
-                           playInfo,
-                           orient,
-                           ovutils::RECONFIG_ON);
-
-   if(!ov.reconfigure(arg)) {
-      return -1;
-   }
-
-   LOGD("prepareForReconfiguration X");
-   return 0;
-}
-#endif // USE_OVERLAY2
-
 static int hwc_prepare(hwc_composer_device_t *dev, hwc_layer_list_t* list) {
-#ifdef USE_OVERLAY2
-    ovutils::Timer t("hwc_prepare");
-#endif
     hwc_context_t* ctx = (hwc_context_t*)(dev);
     ctx->currentOverlayHandle = NULL;
 
@@ -1625,11 +1219,6 @@ static int hwc_prepare(hwc_composer_device_t *dev, hwc_layer_list_t* list) {
                 LOGE_IF(BYPASS_DEBUG,"%s: Bypass setup Failed",__FUNCTION__);
                 isBypassUsed = false;
 
-#ifdef USE_OVERLAY2
-                // If failed to setup bypass, states may have already been set
-                // so reset here
-                setOverlayState(ctx, ovutils::OV_CLOSED);
-#endif
             }
         } else {
             LOGE_IF( BYPASS_DEBUG,"%s: Bypass not possible[%d,%d]",__FUNCTION__,
@@ -1902,9 +1491,6 @@ static int drawLayerUsingCopybit(hwc_composer_device_t *dev, hwc_layer_t *layer,
 
 static int drawLayerUsingOverlay(hwc_context_t *ctx, hwc_layer_t *layer)
 {
-#ifdef USE_OVERLAY2
-    ovutils::Timer t("drawLayerUsingOverlay");
-#endif
     if (ctx && ctx->mOverlayLibObject) {
         private_hwc_module_t* hwcModule = reinterpret_cast<private_hwc_module_t*>(ctx->device.common.module);
         if (!hwcModule) {
@@ -1923,66 +1509,8 @@ static int drawLayerUsingOverlay(hwc_context_t *ctx, hwc_layer_t *layer)
 
         bool ret = true;
 
-#ifdef USE_OVERLAY2
-        overlay2::OverlayMgr *ovLibObject = ctx->mOverlayLibObject;
-        overlay2::Overlay& ov = ovLibObject->ov();
-
-        ovutils::eOverlayState state = ov.getState();
-
-        // Differentiate between states that need to wait for vsync
-        switch (state) {
-            case ovutils::OV_2D_VIDEO_ON_PANEL_TV:
-            case ovutils::OV_3D_VIDEO_ON_2D_PANEL_2D_TV:
-            case ovutils::OV_2D_TRUE_UI_MIRROR:
-                // If displaying on both primary and external, must play each
-                // pipe individually since wait for vsync needs to be done at
-                // the end. Do the following:
-                //     - Play external
-                //     - Play primary
-                //     - Wait for external vsync to be done
-                // NOTE: In these states
-                //           - primary VG = OV_PIPE0
-                //           - external VG = OV_PIPE1
-                //           - external RGB = OV_PIPE2
-                //             - Only in true UI mirroring case, played by fb
-
-                // Same FD for both primary and external VG pipes
-                ov.setMemoryId(hnd->fd, static_cast<ovutils::eDest>(
-                    ovutils::OV_PIPE0 | ovutils::OV_PIPE1));
-
-                // Play external
-                if (!ov.queueBuffer(hnd->offset, ovutils::OV_PIPE1)) {
-                    LOGE("%s: queueBuffer failed for external", __FUNCTION__);
-                    ret = false;
-                }
-
-                // Play primary
-                if (!ov.queueBuffer(hnd->offset, ovutils::OV_PIPE0)) {
-                    LOGE("%s: queueBuffer failed for primary", __FUNCTION__);
-                    ret = false;
-                }
-
-                // Wait for external vsync to be done
-                if (!ov.waitForVsync(ovutils::OV_PIPE1)) {
-                    LOGE("%s: waitForVsync failed for external", __FUNCTION__);
-                    ret = false;
-                }
-                break;
-            default:
-                // In most cases, displaying only to one (primary or external)
-                // so use OV_PIPE_ALL since overlay will ignore NullPipes
-                ov.setMemoryId(hnd->fd, ovutils::OV_PIPE_ALL);
-                if (!ov.queueBuffer(hnd->offset, ovutils::OV_PIPE_ALL)) {
-                    LOGE("%s: queueBuffer failed", __FUNCTION__);
-                    ret = false;
-                }
-                break;
-        }
-#else
         overlay::Overlay *ovLibObject = ctx->mOverlayLibObject;
-
         ret = ovLibObject->queueBuffer(hnd);
-#endif
 
         if (!ret) {
             LOGE("%s: failed", __FUNCTION__);
@@ -2011,13 +1539,8 @@ static int drawLayerUsingBypass(hwc_context_t *ctx, hwc_layer_t *layer, int laye
         return -1;
     }
 
-#ifdef USE_OVERLAY2
-    if (ctx) {
-        overlay2::Overlay& ov = ctx->mOverlayLibObject->ov();
-#else
     if (ctx && ctx->mOvUI[index]) {
         overlay::OverlayUI *ovUI = ctx->mOvUI[index];
-#endif
         int ret = 0;
 
         private_handle_t *hnd = (private_handle_t *)layer->handle;
@@ -2039,25 +1562,8 @@ static int drawLayerUsingBypass(hwc_context_t *ctx, hwc_layer_t *layer, int laye
 
         LOGE_IF(BYPASS_DEBUG,"%s: Bypassing layer: %p using pipe: %d",__FUNCTION__, layer, index );
 
-#ifdef USE_OVERLAY2
-        ovutils::eDest dest = ovutils::OV_PIPE_ALL;
-        if (index == 0) {
-            dest = ovutils::OV_PIPE0;
-        } else if (index == 1) {
-            dest = ovutils::OV_PIPE1;
-        } else if (index == 2) {
-            dest = ovutils::OV_PIPE2;
-        }
-
-        ov.setMemoryId(hnd->fd, dest);
-        ret = ov.queueBuffer(hnd->offset, dest);
-
-        if (!ret) {
-#else
         ret = ovUI->queueBuffer(hnd);
-
         if (ret) {
-#endif
             // Unlock the locked buffer
             if (ctx->swapInterval > 0) {
                 if (GENLOCK_FAILURE == genlock_unlock_buffer(hnd)) {
@@ -2077,9 +1583,6 @@ static int hwc_set(hwc_composer_device_t *dev,
         hwc_surface_t sur,
         hwc_layer_list_t* list)
 {
-#ifdef USE_OVERLAY2
-    ovutils::Timer t("hwc_set");
-#endif
     hwc_context_t* ctx = (hwc_context_t*)(dev);
     if(!ctx) {
         LOGE("hwc_set invalid context");
@@ -2246,19 +1749,12 @@ static int hwc_device_close(struct hw_device_t *dev)
     unlockPreviousOverlayBuffer(ctx);
 
     if (ctx) {
-#ifdef USE_OVERLAY2
-         if(!ctx->mOverlayLibObject->close()) {
-            LOGE("Failed to close overlay");
-         }
-#endif
          delete ctx->mOverlayLibObject;
          ctx->mOverlayLibObject = NULL;
 #ifdef COMPOSITION_BYPASS
-#ifndef USE_OVERLAY2
             for(int i = 0; i < MAX_BYPASS_LAYERS; i++) {
                 delete ctx->mOvUI[i];
             }
-#endif
             unlockPreviousBypassBuffers(ctx);
             unsetBypassBufferLockState(ctx);
 #endif
@@ -2339,26 +1835,15 @@ static int hwc_device_open(const struct hw_module_t* module, const char* name,
         /* initialize our state here */
         memset(dev, 0, sizeof(*dev));
 #ifdef USE_OVERLAY
-#ifdef USE_OVERLAY2
-        dev->mOverlayLibObject = new overlay2::OverlayMgr();
-        overlay2::OverlayMgrSingleton::setOverlayMgr(dev->mOverlayLibObject);
-        if(!dev->mOverlayLibObject->open()) {
-            LOGE("Failed open overlay");
-            return -1;
-        }
-#else
         dev->mOverlayLibObject = new overlay::Overlay();
         if(overlay::initOverlay() == -1)
             LOGE("overlay::initOverlay() ERROR!!");
-#endif // USE_OVERLAY2
 #else
         dev->mOverlayLibObject = NULL;
 #endif
 #ifdef COMPOSITION_BYPASS
         for(int i = 0; i < MAX_BYPASS_LAYERS; i++) {
-#ifndef USE_OVERLAY2
             dev->mOvUI[i] = new overlay::OverlayUI();
-#endif
             dev->previousBypassHandle[i] = NULL;
         }
         unsetBypassBufferLockState(dev);
