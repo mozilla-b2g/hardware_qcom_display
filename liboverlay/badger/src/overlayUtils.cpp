@@ -180,12 +180,14 @@ namespace utils {
          return MDP_RGBX_8888;
       case HAL_PIXEL_FORMAT_YCbCr_422_SP:
          return MDP_Y_CBCR_H2V1;
+      case HAL_PIXEL_FORMAT_YCrCb_422_SP:
+         return MDP_Y_CRCB_H2V1;
       case HAL_PIXEL_FORMAT_YCbCr_420_SP:
-         return MDP_Y_CRCB_H2V2;
-      case HAL_PIXEL_FORMAT_YCrCb_420_SP:
          return MDP_Y_CBCR_H2V2;
+      case HAL_PIXEL_FORMAT_YCrCb_420_SP:
+         return MDP_Y_CRCB_H2V2;
       case HAL_PIXEL_FORMAT_YCbCr_420_SP_TILED:
-         return MDP_Y_CRCB_H2V2_TILE;
+         return MDP_Y_CBCR_H2V2_TILE;
       case HAL_PIXEL_FORMAT_YV12:
          return MDP_Y_CR_CB_H2V2;
       default:
