@@ -39,7 +39,7 @@
 #define GENLOCK_DEVICE "/dev/genlock"
 
 #ifndef USE_GENLOCK
-#define USE_GENLOCK
+//#define USE_GENLOCK
 #endif
 
 namespace {
