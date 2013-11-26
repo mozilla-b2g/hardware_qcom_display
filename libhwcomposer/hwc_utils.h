@@ -23,6 +23,7 @@
 
 #define HWC_REMOVE_DEPRECATED_VERSIONS 1
 #include <fcntl.h>
+#include <math.h>
 #include <hardware/hwcomposer.h>
 #include <gr.h>
 #include <gralloc_priv.h>
@@ -130,6 +131,7 @@ enum {
 
 // HAL specific features
 enum {
+    HWC_COLOR_FILL = 0x00000008,
     HWC_FORMAT_RB_SWAP = 0x00000040,
 };
 
@@ -163,10 +165,29 @@ inline overlay::Rotator* LayerRotMap::getRot(uint32_t index) const {
     return mRot[index];
 }
 
+inline hwc_rect_t integerizeSourceCrop(const hwc_frect_t& cropF) {
+    hwc_rect_t cropI = {0};
+    cropI.left = int(ceilf(cropF.left));
+    cropI.top = int(ceilf(cropF.top));
+    cropI.right = int(floorf(cropF.right));
+    cropI.bottom = int(floorf(cropF.bottom));
+    return cropI;
+}
+
+inline bool isNonIntegralSourceCrop(const hwc_frect_t& cropF) {
+    if(cropF.left - roundf(cropF.left)     ||
+       cropF.top - roundf(cropF.top)       ||
+       cropF.right - roundf(cropF.right)   ||
+       cropF.bottom - roundf(cropF.bottom))
+        return true;
+    else
+        return false;
+}
+
 // -----------------------------------------------------------------------------
 // Utility functions - implemented in hwc_utils.cpp
 void dumpLayer(hwc_layer_1_t const* l);
-void setListStats(hwc_context_t *ctx, const hwc_display_contents_1_t *list,
+void setListStats(hwc_context_t *ctx, hwc_display_contents_1_t *list,
         int dpy);
 void initContext(hwc_context_t *ctx);
 void closeContext(hwc_context_t *ctx);
@@ -193,7 +214,7 @@ void dumpsys_log(android::String8& buf, const char* fmt, ...);
 
 int getExtOrientation(hwc_context_t* ctx);
 bool isValidRect(const hwc_rect_t& rect);
-void deductRect(const hwc_layer_1_t* layer, hwc_rect_t& irect);
+hwc_rect_t deductRect(const hwc_rect_t& rect1, const hwc_rect_t& rect2);
 hwc_rect_t getIntersection(const hwc_rect_t& rect1, const hwc_rect_t& rect2);
 hwc_rect_t getUnion(const hwc_rect_t& rect1, const hwc_rect_t& rect2);
 void optimizeLayerRects(hwc_context_t *ctx,
@@ -232,10 +253,6 @@ void closeAcquireFds(hwc_display_contents_1_t* list);
 //Sync point impl.
 int hwc_sync(hwc_context_t *ctx, hwc_display_contents_1_t* list, int dpy,
         int fd);
-
-//Trims a layer's source crop which is outside of screen boundary.
-void trimLayer(hwc_context_t *ctx, const int& dpy, const int& transform,
-        hwc_rect_t& crop, hwc_rect_t& dst);
 
 //Sets appropriate mdp flags for a layer.
 void setMdpFlags(hwc_layer_1_t *layer,

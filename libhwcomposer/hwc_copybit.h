@@ -22,6 +22,11 @@
 #include "hwc_utils.h"
 
 #define NUM_RENDER_BUFFERS 3
+//These scaling factors are specific for MDP3. Normally scaling factor
+//is only 4, but copybit will create temp buffer to let it run through
+//twice
+#define MAX_SCALE_FACTOR 16
+#define MIN_SCALE_FACTOR 0.0625
 
 namespace qhwc {
 
@@ -50,6 +55,8 @@ private:
     // Helper functions for copybit composition
     int  drawLayerUsingCopybit(hwc_context_t *dev, hwc_layer_1_t *layer,
                           private_handle_t *renderBuffer, int dpy, bool isFG);
+    int fillColorUsingCopybit(hwc_layer_1_t *layer,
+                          private_handle_t *renderBuffer);
     bool canUseCopybitForYUV (hwc_context_t *ctx);
     bool canUseCopybitForRGB (hwc_context_t *ctx,
                                      hwc_display_contents_1_t *list, int dpy);
@@ -77,9 +84,8 @@ private:
     // Index of the current intermediate render buffer
     int mCurRenderBufferIndex;
 
-    //These are the the release FDs of the T-2 and T-1 round
-    //We wait on the T-2 fence
-    int mRelFd[2];
+    // Release FDs of the intermediate render buffer
+    int mRelFd[NUM_RENDER_BUFFERS];
 
     //Dynamic composition threshold for deciding copybit usage.
     double mDynThreshold;
