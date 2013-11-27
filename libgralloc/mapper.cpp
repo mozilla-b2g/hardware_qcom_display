@@ -329,7 +329,25 @@ int gralloc_perform(struct gralloc_module_t const* module,
                 int width   = va_arg(args, int);
                 int format  = va_arg(args, int);
                 int *stride = va_arg(args, int *);
-                *stride = AdrenoMemInfo::getInstance().getStride(width, format);
+                int alignedw = 0, alignedh = 0;
+                AdrenoMemInfo::getInstance().getAlignedWidthAndHeight(width,
+                                     0, format, alignedw, alignedh);
+                *stride = alignedw;
+                res = 0;
+            } break;
+        case GRALLOC_MODULE_PERFORM_GET_CUSTOM_STRIDE_FROM_HANDLE:
+            {
+                private_handle_t* hnd =  va_arg(args, private_handle_t*);
+                int *stride = va_arg(args, int *);
+                if (private_handle_t::validate(hnd)) {
+                    return res;
+                }
+                MetaData_t *metadata = (MetaData_t *)hnd->base_metadata;
+                if(metadata && metadata->operation & UPDATE_BUFFER_GEOMETRY) {
+                    *stride = metadata->bufferDim.sliceWidth;
+                } else {
+                    *stride = hnd->width;
+                }
                 res = 0;
             } break;
         default:

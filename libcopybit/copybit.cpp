@@ -441,8 +441,6 @@ static int stretch_copybit(
                 // we don't support plane alpha with RGBA formats
                 case HAL_PIXEL_FORMAT_RGBA_8888:
                 case HAL_PIXEL_FORMAT_BGRA_8888:
-                case HAL_PIXEL_FORMAT_RGBA_5551:
-                case HAL_PIXEL_FORMAT_RGBA_4444:
                     ALOGE ("%s : Unsupported Pixel format %d", __FUNCTION__,
                            src->format);
                     return -EINVAL;
@@ -557,6 +555,108 @@ static int finish_copybit(struct copybit_device_t *dev)
     // NOP for MDP copybit
     return 0;
 }
+static int clear_copybit(struct copybit_device_t *dev,
+                         struct copybit_image_t const *buf,
+                         struct copybit_rect_t *rect)
+{
+    struct copybit_context_t* ctx = (struct copybit_context_t*)dev;
+    uint32_t color = 0; // black color
+
+    if (!ctx) {
+        ALOGE ("%s: Invalid copybit context", __FUNCTION__);
+        return -EINVAL;
+    }
+
+    struct blitReq list1;
+    memset((char *)&list1 , 0 ,sizeof (struct blitReq) );
+    list1.count = 1;
+    int rel_fen_fd = -1;
+    int my_tmp_get_fence = -1;
+
+    list1.sync.rel_fen_fd  =  &my_tmp_get_fence;
+    mdp_blit_req* req = &list1.req[0];
+
+    if(!req) {
+        ALOGE ("%s : Invalid request", __FUNCTION__);
+        return -EINVAL;
+    }
+
+    set_image(&req->dst, buf);
+    set_image(&req->src, buf);
+
+    if (rect->l < 0 || (uint32_t)(rect->r - rect->l) > req->dst.width ||
+       rect->t < 0 || (uint32_t)(rect->b - rect->t) > req->dst.height) {
+       ALOGE ("%s : Invalid rect : src_rect l %d t %d r %d b %d",\
+       __FUNCTION__, rect->l, rect->t, rect->r, rect->b);
+       return -EINVAL;
+    }
+
+    req->dst_rect.x  = rect->l;
+    req->dst_rect.y  = rect->t;
+    req->dst_rect.w  = rect->r - rect->l;
+    req->dst_rect.h  = rect->b - rect->t;
+
+    req->src_rect = req->dst_rect;
+
+    req->const_color.b = (uint32_t)((color >> 16) & 0xff);
+    req->const_color.g = (uint32_t)((color >> 8) & 0xff);
+    req->const_color.r = (uint32_t)((color >> 0) & 0xff);
+    req->const_color.alpha = MDP_ALPHA_NOP;
+
+    req->transp_mask = MDP_TRANSP_NOP;
+    req->flags = MDP_SOLID_FILL | MDP_MEMORY_ID_TYPE_FB | MDP_BLEND_FG_PREMULT;
+    int status = msm_copybit(ctx, &list1);
+
+    if (my_tmp_get_fence !=  -1)
+        close(my_tmp_get_fence);
+
+    return status;
+}
+
+/** Fill the rect on dst with RGBA color **/
+static int fill_color(struct copybit_device_t *dev,
+                      struct copybit_image_t const *dst,
+                      struct copybit_rect_t const *rect,
+                      uint32_t color)
+{
+    struct copybit_context_t* ctx = (struct copybit_context_t*)dev;
+    if (!ctx) {
+        ALOGE("%s: Invalid copybit context", __FUNCTION__);
+        return -EINVAL;
+    }
+
+    if (dst->w > MAX_DIMENSION || dst->h > MAX_DIMENSION) {
+        ALOGE("%s: Invalid DST w=%d h=%d", __FUNCTION__, dst->w, dst->h);
+        return -EINVAL;
+    }
+
+    if (rect->l < 0 || (uint32_t)(rect->r - rect->l) > dst->w ||
+        rect->t < 0 || (uint32_t)(rect->b - rect->t) > dst->h) {
+        ALOGE("%s: Invalid destination rect: l=%d t=%d r=%d b=%d",
+                __FUNCTION__, rect->l, rect->t, rect->r, rect->b);
+        return -EINVAL;
+    }
+
+    struct blitReq* list = &ctx->list;
+    mdp_blit_req* req = &list->req[list->count++];
+    set_infos(ctx, req, MDP_SOLID_FILL);
+    set_image(&req->src, dst);
+    set_image(&req->dst, dst);
+
+    req->dst_rect.x = rect->l;
+    req->dst_rect.y = rect->t;
+    req->dst_rect.w = rect->r - rect->l;
+    req->dst_rect.h = rect->b - rect->t;
+    req->src_rect = req->dst_rect;
+
+    req->const_color.r = (uint32_t)((color >> 0) & 0xff);
+    req->const_color.g = (uint32_t)((color >> 8) & 0xff);
+    req->const_color.b = (uint32_t)((color >> 16) & 0xff);
+    req->const_color.alpha = (uint32_t)((color >> 24) & 0xff);
+
+    int status = msm_copybit(ctx, list);
+    return status;
+}
 
 /*****************************************************************************/
 
@@ -608,7 +708,9 @@ static int open_copybit(const struct hw_module_t* module, const char* name,
     ctx->device.set_sync = set_sync_copybit;
     ctx->device.stretch = stretch_copybit;
     ctx->device.finish = finish_copybit;
+    ctx->device.fill_color = fill_color;
     ctx->device.flush_get_fence = flush_get_fence;
+    ctx->device.clear = clear_copybit;
     ctx->mAlpha = MDP_ALPHA_NOP;
     ctx->mFlags = 0;
     ctx->sync.flags = 0;

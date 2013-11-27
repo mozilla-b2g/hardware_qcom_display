@@ -484,6 +484,9 @@ static int hwc_query(struct hwc_composer_device_1* dev,
     case HWC_FORMAT_RB_SWAP:
         value[0] = 1;
         break;
+    case HWC_COLOR_FILL:
+        value[0] = 1;
+        break;
     default:
         return -EINVAL;
     }
@@ -842,7 +845,7 @@ static int hwc_device_open(const struct hw_module_t* module, const char* name,
 
         //Setup HWC methods
         dev->device.common.tag          = HARDWARE_DEVICE_TAG;
-        dev->device.common.version      = HWC_DEVICE_API_VERSION_1_2;
+        dev->device.common.version      = HWC_DEVICE_API_VERSION_1_3;
         dev->device.common.module       = const_cast<hw_module_t*>(module);
         dev->device.common.close        = hwc_device_close;
         dev->device.prepare             = hwc_prepare;

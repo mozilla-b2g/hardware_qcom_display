@@ -48,8 +48,6 @@ enum {
     COPYBIT_FORMAT_RGB_888      = HAL_PIXEL_FORMAT_RGB_888,
     COPYBIT_FORMAT_RGB_565      = HAL_PIXEL_FORMAT_RGB_565,
     COPYBIT_FORMAT_BGRA_8888    = HAL_PIXEL_FORMAT_BGRA_8888,
-    COPYBIT_FORMAT_RGBA_5551    = HAL_PIXEL_FORMAT_RGBA_5551,
-    COPYBIT_FORMAT_RGBA_4444    = HAL_PIXEL_FORMAT_RGBA_4444,
     COPYBIT_FORMAT_YCbCr_422_SP = 0x10,
     COPYBIT_FORMAT_YCrCb_420_SP = 0x11,
 };
@@ -243,6 +241,21 @@ struct copybit_device_t {
                    struct copybit_rect_t const *dst_rect,
                    struct copybit_rect_t const *src_rect,
                    struct copybit_region_t const *region);
+
+    /**
+     * Fill the rect on dst with RGBA color
+     *
+     * @param dev from open
+     * @param dst is destination image
+     * @param rect is destination rectangle
+     * @param color is RGBA color to fill
+     *
+     * @return 0 if successful
+     */
+    int (*fill_color)(struct copybit_device_t *dev,
+                      struct copybit_image_t const *dst,
+                      struct copybit_rect_t const *rect,
+                      uint32_t color);
 
   /**
     * Execute the completion of the copybit draw operation.

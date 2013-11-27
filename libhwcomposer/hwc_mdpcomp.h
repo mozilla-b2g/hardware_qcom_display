@@ -52,7 +52,7 @@ public:
     /* Initialize MDP comp*/
     static bool init(hwc_context_t *ctx);
     static void resetIdleFallBack() { sIdleFallBack = false; }
-    static void reset() { sCompBytesClaimed = 0; };
+    static void reset() { sBwClaimed = 0.0; };
 
 protected:
     enum { MAX_SEC_LAYERS = 1 }; //TODO add property support
@@ -118,7 +118,8 @@ protected:
         void reset();
         void cacheAll(hwc_display_contents_1_t* list);
         void updateCounts(const FrameInfo&);
-        bool isSameFrame(const FrameInfo& curFrame);
+        bool isSameFrame(const FrameInfo& curFrame,
+                         hwc_display_contents_1_t* list);
     };
 
     /* allocates pipe from pipe book */
@@ -146,8 +147,16 @@ protected:
     bool partialMDPComp(hwc_context_t *ctx, hwc_display_contents_1_t* list);
     /* Partial MDP comp that uses caching to save power as primary goal */
     bool cacheBasedComp(hwc_context_t *ctx, hwc_display_contents_1_t* list);
-    /* Partial MDP comp that uses number of pixels to optimize perf goal */
-    bool loadBasedComp(hwc_context_t *ctx, hwc_display_contents_1_t* list);
+    /* Partial MDP comp that prefers GPU perf-wise. Since the GPU's
+     * perf is proportional to the pixels it processes, we use the number of
+     * pixels as a heuristic */
+    bool loadBasedCompPreferGPU(hwc_context_t *ctx,
+            hwc_display_contents_1_t* list);
+    /* Partial MDP comp that prefers MDP perf-wise. Since the MDP's perf is
+     * proportional to the bandwidth, overlaps it sees, we use that as a
+     * heuristic */
+    bool loadBasedCompPreferMDP(hwc_context_t *ctx,
+            hwc_display_contents_1_t* list);
     /* Checks if its worth doing load based partial comp */
     bool isLoadBasedCompDoable(hwc_context_t *ctx,
             hwc_display_contents_1_t* list);
@@ -192,6 +201,7 @@ protected:
     bool programYUV(hwc_context_t *ctx, hwc_display_contents_1_t* list);
     void reset(const int& numAppLayers, hwc_display_contents_1_t* list);
     bool isSupportedForMDPComp(hwc_context_t *ctx, hwc_layer_1_t* layer);
+    bool resourceCheck(hwc_context_t *ctx, hwc_display_contents_1_t *list);
 
     int mDpy;
     static bool sEnabled;
@@ -203,9 +213,9 @@ protected:
     static int sMaxPipesPerMixer;
     //Max bandwidth. Value is in GBPS. For ex: 2.3 means 2.3GBPS
     static float sMaxBw;
-    //Tracks composition bytes claimed. Represented as the total w*h*bpp
-    //going to MDP mixers
-    static uint32_t sCompBytesClaimed;
+    //Tracks composition bandwidth claimed. Represented as the total
+    //w*h*bpp*fps (gigabytes-per-second) going to MDP mixers.
+    static double sBwClaimed;
     static IdleInvalidator *idleInvalidator;
     struct FrameInfo mCurrentFrame;
     struct LayerCache mCachedFrame;

@@ -2,8 +2,7 @@
  * Copyright (C) 2010 The Android Open Source Project
  * Copyright (C) 2012-2013, The Linux Foundation. All rights reserved.
  *
- * Not a Contribution, Apache license notifications and license are retained
- * for attribution purposes only.
+ * Not a Contribution.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,7 +24,9 @@
 #include "hwc_copybit.h"
 #include "comptype.h"
 #include "gr.h"
+#include "cb_utils.h"
 
+using namespace qdutils;
 namespace qhwc {
 
 struct range {
@@ -127,20 +128,6 @@ unsigned int CopyBit::getRGBRenderingArea
     return renderArea;
 }
 
-bool checkNonWormholeRegion(private_handle_t* hnd, hwc_rect_t& rect)
-{
-    unsigned int height = rect.bottom - rect.top;
-    unsigned int width = rect.right - rect.left;
-    copybit_image_t buf;
-    buf.w = ALIGN(hnd->width, 32);
-    buf.h = hnd->height;
-
-    if (buf.h != height || buf.w != width)
-        return false;
-
-    return true;
-}
-
 bool CopyBit::prepare(hwc_context_t *ctx, hwc_display_contents_1_t *list,
                                                             int dpy) {
 
@@ -183,21 +170,33 @@ bool CopyBit::prepare(hwc_context_t *ctx, hwc_display_contents_1_t *list,
     // Following are MDP3 limitations for which we
     // need to fallback to GPU composition:
     // 1. Plane alpha is not supported by MDP3.
+    // 2. Scaling is within range
     if (qdutils::MDPVersion::getInstance().getMDPVersion() < 400) {
         for (int i = ctx->listStats[dpy].numAppLayers-1; i >= 0 ; i--) {
+            int dst_h, dst_w, src_h, src_w;
+            float dx, dy;
             hwc_layer_1_t *layer = (hwc_layer_1_t *) &list->hwLayers[i];
             if (layer->planeAlpha != 0xFF)
                 return true;
-        }
-        /*
-         * Fallback to GPU in MDP3 when NonWormholeRegion is not of frame buffer
-         * size as artifact is seen in WormholeRegion of previous frame.
-         */
-        hwc_rect_t nonWormHoleRegion;
-        getNonWormholeRegion(list, nonWormHoleRegion);
-        if(!checkNonWormholeRegion(fbHnd, nonWormHoleRegion))
-           return true;
 
+            if (layer->transform & HAL_TRANSFORM_ROT_90) {
+                src_h = layer->sourceCrop.right - layer->sourceCrop.left;
+                src_w = layer->sourceCrop.bottom - layer->sourceCrop.top;
+            } else {
+                src_h = layer->sourceCrop.bottom - layer->sourceCrop.top;
+                src_w = layer->sourceCrop.right - layer->sourceCrop.left;
+            }
+            dst_h = layer->displayFrame.bottom - layer->displayFrame.top;
+            dst_w = layer->displayFrame.right - layer->displayFrame.left;
+
+            dx = (float)dst_w/src_w;
+            dy = (float)dst_h/src_h;
+            if (dx > MAX_SCALE_FACTOR || dx < MIN_SCALE_FACTOR)
+                return false;
+
+            if (dy > MAX_SCALE_FACTOR || dy < MIN_SCALE_FACTOR)
+                return false;
+        }
     }
 
     //Allocate render buffers if they're not allocated
@@ -270,23 +269,23 @@ bool CopyBit::draw(hwc_context_t *ctx, hwc_display_contents_1_t *list,
 
     if (ctx->mMDP.version >= qdutils::MDP_V4_0) {
         //Wait for the previous frame to complete before rendering onto it
-        if(mRelFd[0] >=0) {
-            sync_wait(mRelFd[0], 1000);
-            close(mRelFd[0]);
-            mRelFd[0] = -1;
+        if(mRelFd[mCurRenderBufferIndex] >=0) {
+            sync_wait(mRelFd[mCurRenderBufferIndex], 1000);
+            close(mRelFd[mCurRenderBufferIndex]);
+            mRelFd[mCurRenderBufferIndex] = -1;
         }
-
-        //Clear the visible region on the render buffer
-        //XXX: Do this only when needed.
-        hwc_rect_t clearRegion;
-        getNonWormholeRegion(list, clearRegion);
-        clear(renderBuffer, clearRegion);
     } else {
-        if(mRelFd[0] >=0) {
+        if(mRelFd[mCurRenderBufferIndex] >=0) {
             copybit_device_t *copybit = getCopyBitDevice();
-            copybit->set_sync(copybit, mRelFd[0]);
+            copybit->set_sync(copybit, mRelFd[mCurRenderBufferIndex]);
         }
     }
+
+    //Clear the transparent or left out region on the render buffer
+    hwc_rect_t clearRegion = {0,0,0,0};
+    if(CBUtils::getuiClearRegion(list, clearRegion, layerProp))
+        clear(renderBuffer, clearRegion);
+
     // numAppLayers-1, as we iterate from 0th layer index with HWC_COPYBIT flag
     for (int i = 0; i <= (ctx->listStats[dpy].numAppLayers-1); i++) {
         hwc_layer_1_t *layer = &list->hwLayers[i];
@@ -338,6 +337,9 @@ int  CopyBit::drawLayerUsingCopybit(hwc_context_t *dev, hwc_layer_1_t *layer,
 
     private_handle_t *hnd = (private_handle_t *)layer->handle;
     if(!hnd) {
+        if (layer->flags & HWC_COLOR_FILL) { // Color layer
+            return fillColorUsingCopybit(layer, renderBuffer);
+        }
         ALOGE("%s: invalid handle", __FUNCTION__);
         return -1;
     }
@@ -393,7 +395,7 @@ int  CopyBit::drawLayerUsingCopybit(hwc_context_t *dev, hwc_layer_1_t *layer,
                }
     }
     // Copybit source rect
-    hwc_rect_t sourceCrop = layer->sourceCrop;
+    hwc_rect_t sourceCrop = integerizeSourceCrop(layer->sourceCropf);
     copybit_rect_t srcRect = {sourceCrop.left, sourceCrop.top,
                               sourceCrop.right,
                               sourceCrop.bottom};
@@ -586,6 +588,44 @@ int  CopyBit::drawLayerUsingCopybit(hwc_context_t *dev, hwc_layer_1_t *layer,
     return err;
 }
 
+int CopyBit::fillColorUsingCopybit(hwc_layer_1_t *layer,
+                          private_handle_t *renderBuffer)
+{
+    if (!renderBuffer) {
+        ALOGE("%s: Render Buffer is NULL", __FUNCTION__);
+        return -1;
+    }
+
+    // Copybit dst
+    copybit_image_t dst;
+    dst.w = ALIGN(renderBuffer->width, 32);
+    dst.h = renderBuffer->height;
+    dst.format = renderBuffer->format;
+    dst.base = (void *)renderBuffer->base;
+    dst.handle = (native_handle_t *)renderBuffer;
+
+    // Copybit dst rect
+    hwc_rect_t displayFrame = layer->displayFrame;
+    copybit_rect_t dstRect = {displayFrame.left, displayFrame.top,
+                              displayFrame.right, displayFrame.bottom};
+
+    uint32_t color = layer->transform;
+    copybit_device_t *copybit = mEngine;
+    copybit->set_parameter(copybit, COPYBIT_FRAMEBUFFER_WIDTH,
+                           renderBuffer->width);
+    copybit->set_parameter(copybit, COPYBIT_FRAMEBUFFER_HEIGHT,
+                           renderBuffer->height);
+    copybit->set_parameter(copybit, COPYBIT_DITHER,
+                           (dst.format == HAL_PIXEL_FORMAT_RGB_565) ?
+                           COPYBIT_ENABLE : COPYBIT_DISABLE);
+    copybit->set_parameter(copybit, COPYBIT_BLEND_MODE, layer->blending);
+    copybit->set_parameter(copybit, COPYBIT_PLANE_ALPHA, layer->planeAlpha);
+    copybit->set_parameter(copybit, COPYBIT_BLIT_TO_FRAMEBUFFER,COPYBIT_ENABLE);
+    int res = copybit->fill_color(copybit, &dst, &dstRect, color);
+    copybit->set_parameter(copybit,COPYBIT_BLIT_TO_FRAMEBUFFER,COPYBIT_DISABLE);
+    return res;
+}
+
 void CopyBit::getLayerResolution(const hwc_layer_1_t* layer,
                                  unsigned int& width, unsigned int& height)
 {
@@ -630,6 +670,11 @@ void CopyBit::freeRenderBuffers()
 {
     for (int i = 0; i < NUM_RENDER_BUFFERS; i++) {
         if(mRenderBuffer[i]) {
+            //Since we are freeing buffer close the fence if it has a valid one.
+            if(mRelFd[i] >= 0) {
+                close(mRelFd[i]);
+                mRelFd[i] = -1;
+            }
             free_buffer(mRenderBuffer[i]);
             mRenderBuffer[i] = NULL;
         }
@@ -641,10 +686,9 @@ private_handle_t * CopyBit::getCurrentRenderBuffer() {
 }
 
 void CopyBit::setReleaseFd(int fd) {
-    if(mRelFd[0] >=0)
-        close(mRelFd[0]);
-    mRelFd[0] = mRelFd[1];
-    mRelFd[1] = dup(fd);
+    if(mRelFd[mCurRenderBufferIndex] >=0)
+        close(mRelFd[mCurRenderBufferIndex]);
+    mRelFd[mCurRenderBufferIndex] = dup(fd);
 }
 
 struct copybit_device_t* CopyBit::getCopyBitDevice() {
@@ -654,10 +698,10 @@ struct copybit_device_t* CopyBit::getCopyBitDevice() {
 CopyBit::CopyBit():mIsModeOn(false), mCopyBitDraw(false),
     mCurRenderBufferIndex(0){
     hw_module_t const *module;
-    for (int i = 0; i < NUM_RENDER_BUFFERS; i++)
+    for (int i = 0; i < NUM_RENDER_BUFFERS; i++) {
         mRenderBuffer[i] = NULL;
-    mRelFd[0] = -1;
-    mRelFd[1] = -1;
+        mRelFd[i] = -1;
+    }
 
     char value[PROPERTY_VALUE_MAX];
     property_get("debug.hwc.dynThreshold", value, "2");
@@ -675,10 +719,6 @@ CopyBit::CopyBit():mIsModeOn(false), mCopyBitDraw(false),
 CopyBit::~CopyBit()
 {
     freeRenderBuffers();
-    if(mRelFd[0] >=0)
-        close(mRelFd[0]);
-    if(mRelFd[1] >=0)
-        close(mRelFd[1]);
     if(mEngine)
     {
         copybit_close(mEngine);
