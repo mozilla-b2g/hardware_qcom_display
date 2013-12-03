@@ -84,6 +84,10 @@ void GenericPipe::setCrop(const overlay::utils::Dim& d) {
     mCtrlData.ctrl.setCrop(d);
 }
 
+void GenericPipe::setColor(const uint32_t color) {
+    mCtrlData.ctrl.setColor(color);
+}
+
 void GenericPipe::setTransform(const utils::eTransform& orient) {
     mCtrlData.ctrl.setTransform(orient);
 }
@@ -165,6 +169,10 @@ bool GenericPipe::setClosed() {
 
 void GenericPipe::forceSet() {
     mCtrlData.ctrl.forceSet();
+}
+
+int GenericPipe::getPipeId() {
+    return mCtrlData.ctrl.getPipeId();
 }
 
 } //namespace overlay

@@ -293,6 +293,10 @@ bool MDPComp::isValidDimension(hwc_context_t *ctx, hwc_layer_1_t *layer) {
     private_handle_t *hnd = (private_handle_t *)layer->handle;
 
     if(!hnd) {
+        if (layer->flags & HWC_COLOR_FILL) {
+            // Color layer
+            return true;
+        }
         ALOGE("%s: layer handle is NULL", __FUNCTION__);
         return false;
     }
@@ -322,23 +326,25 @@ bool MDPComp::isValidDimension(hwc_context_t *ctx, hwc_layer_1_t *layer) {
     if((crop_w < 5)||(crop_h < 5))
         return false;
 
-    const uint32_t downscale =
+    if((w_dscale > 1.0f) || (h_dscale > 1.0f)) {
+        const uint32_t downscale =
             qdutils::MDPVersion::getInstance().getMaxMDPDownscale();
-    if(ctx->mMDP.version >= qdutils::MDSS_V5) {
-        /* Workaround for downscales larger than 4x.
-         * Will be removed once decimator block is enabled for MDSS
-         */
-        if(!qdutils::MDPVersion::getInstance().supportsDecimation()) {
-            if(crop_w > MAX_DISPLAY_DIM || w_dscale > downscale ||
-                    h_dscale > downscale)
-                return false;
-        } else {
-            if(w_dscale > 64 || h_dscale > 64)
+        if(ctx->mMDP.version >= qdutils::MDSS_V5) {
+            /* Workaround for downscales larger than 4x.
+             * Will be removed once decimator block is enabled for MDSS
+             */
+            if(!qdutils::MDPVersion::getInstance().supportsDecimation()) {
+                if(crop_w > MAX_DISPLAY_DIM || w_dscale > downscale ||
+                   h_dscale > downscale)
+                    return false;
+            } else {
+                if(w_dscale > 64 || h_dscale > 64)
+                    return false;
+            }
+        } else { //A-family
+            if(w_dscale > downscale || h_dscale > downscale)
                 return false;
         }
-    } else { //A-family
-        if(w_dscale > downscale || h_dscale > downscale)
-            return false;
     }
 
     return true;
@@ -1446,8 +1452,13 @@ bool MDPCompNonSplit::draw(hwc_context_t *ctx, hwc_display_contents_1_t* list) {
         hwc_layer_1_t *layer = &list->hwLayers[i];
         private_handle_t *hnd = (private_handle_t *)layer->handle;
         if(!hnd) {
-            ALOGE("%s handle null", __FUNCTION__);
-            return false;
+            if (!(layer->flags & HWC_COLOR_FILL)) {
+                ALOGE("%s handle null", __FUNCTION__);
+                return false;
+            }
+            // No PLAY for Color layer
+            layerProp[i].mFlags &= ~HWC_MDPCOMP;
+            continue;
         }
 
         int mdpIndex = mCurrentFrame.layerToMDP[i];
