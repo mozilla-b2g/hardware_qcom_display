@@ -31,6 +31,7 @@
 #define OVERLAY_H
 
 #include "overlayUtils.h"
+#include "mdp_version.h"
 #include "utils/threads.h"
 
 struct MetaData_t;
@@ -119,8 +120,6 @@ public:
     void getDump(char *buf, size_t len);
     /* Reset usage and allocation bits on all pipes for given display */
     void clear(int dpy);
-    /* Marks the display, whose pipes need to be forcibaly configured */
-    void forceSet(const int& dpy);
 
     /* Closes open pipes, called during startup */
     static int initOverlay();
@@ -140,6 +139,7 @@ private:
     explicit Overlay();
     /*Validate index range, abort if invalid */
     void validate(int index);
+    static void setDMAMultiplexingSupported();
     void dump() const;
     /* Creates a scalar object using libscale.so */
     static void initScalar();
@@ -209,7 +209,7 @@ private:
     static Overlay *sInstance;
     static int sDpyFbMap[DPY_MAX];
     static int sDMAMode;
-    static int sForceSetBitmap;
+    static bool sDMAMultiplexingSupported;
     static void *sLibScaleHandle;
     static scale::Scale *sScale;
 };
@@ -271,6 +271,12 @@ inline void Overlay::setDMAMode(const int& mode) {
         sDMAMode = mode;
 }
 
+inline void Overlay::setDMAMultiplexingSupported() {
+    sDMAMultiplexingSupported = false;
+    if(qdutils::MDPVersion::getInstance().is8x26())
+        sDMAMultiplexingSupported = true;
+}
+
 inline int Overlay::getDMAMode() {
     return sDMAMode;
 }
@@ -278,10 +284,6 @@ inline int Overlay::getDMAMode() {
 inline int Overlay::getFbForDpy(const int& dpy) {
     OVASSERT(dpy >= 0 && dpy < DPY_MAX, "Invalid dpy %d", dpy);
     return sDpyFbMap[dpy];
-}
-
-inline void Overlay::forceSet(const int& dpy) {
-    sForceSetBitmap |= (1 << dpy);
 }
 
 inline scale::Scale *Overlay::getScalar() {

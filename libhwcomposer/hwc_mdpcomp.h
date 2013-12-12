@@ -70,6 +70,12 @@ protected:
         virtual ~MdpPipeInfo(){};
     };
 
+    struct MdpYUVPipeInfo : public MdpPipeInfo{
+        ovutils::eDest lIndex;
+        ovutils::eDest rIndex;
+        virtual ~MdpYUVPipeInfo(){};
+    };
+
     /* per layer data */
     struct PipeLayerPair {
         MdpPipeInfo *pipeInfo;
@@ -133,7 +139,12 @@ protected:
     /* Checks for pipes needed versus pipes available */
     virtual bool arePipesAvailable(hwc_context_t *ctx,
             hwc_display_contents_1_t* list) = 0;
-
+    /* increments mdpCount if 4k2k yuv layer split is enabled*/
+    virtual void modifymdpCountfor4k2k(hwc_context_t *ctx,
+            hwc_display_contents_1_t* list) = 0;
+    /* configures 4kx2k yuv layer*/
+    virtual int configure4k2kYuv(hwc_context_t *ctx, hwc_layer_1_t *layer,
+            PipeLayerPair& PipeLayerPair) = 0;
     /* set/reset flags for MDPComp */
     void setMDPCompLayerFlags(hwc_context_t *ctx,
                               hwc_display_contents_1_t* list);
@@ -165,11 +176,14 @@ protected:
             bool secureOnly);
     /* checks for conditions where YUV layers cannot be bypassed */
     bool isYUVDoable(hwc_context_t* ctx, hwc_layer_1_t* layer);
-    /* calcs bytes read by MDP for a given frame */
-    uint32_t calcMDPBytesRead(hwc_context_t *ctx,
+    /* calcs bytes read by MDP in gigs for a given frame */
+    double calcMDPBytesRead(hwc_context_t *ctx,
             hwc_display_contents_1_t* list);
     /* checks if the required bandwidth exceeds a certain max */
-    bool bandwidthCheck(hwc_context_t *ctx, const uint32_t& size);
+    bool bandwidthCheck(hwc_context_t *ctx, const double& size);
+    /* checks if MDP/MDSS can process current list w.r.to HW limitations
+     * All peculiar HW limitations should go here */
+    bool hwLimitationsCheck(hwc_context_t* ctx, hwc_display_contents_1_t* list);
     /* generates ROI based on the modified area of the frame */
     void generateROI(hwc_context_t *ctx, hwc_display_contents_1_t* list);
     bool validateAndApplyROI(hwc_context_t *ctx, hwc_display_contents_1_t* list,
@@ -198,7 +212,6 @@ protected:
     void updateYUV(hwc_context_t* ctx, hwc_display_contents_1_t* list,
             bool secureOnly);
     bool programMDP(hwc_context_t *ctx, hwc_display_contents_1_t* list);
-    bool programYUV(hwc_context_t *ctx, hwc_display_contents_1_t* list);
     void reset(const int& numAppLayers, hwc_display_contents_1_t* list);
     bool isSupportedForMDPComp(hwc_context_t *ctx, hwc_layer_1_t* layer);
     bool resourceCheck(hwc_context_t *ctx, hwc_display_contents_1_t *list);
@@ -212,13 +225,17 @@ protected:
     static bool sIdleFallBack;
     static int sMaxPipesPerMixer;
     //Max bandwidth. Value is in GBPS. For ex: 2.3 means 2.3GBPS
-    static float sMaxBw;
+    static double sMaxBw;
     //Tracks composition bandwidth claimed. Represented as the total
     //w*h*bpp*fps (gigabytes-per-second) going to MDP mixers.
     static double sBwClaimed;
     static IdleInvalidator *idleInvalidator;
     struct FrameInfo mCurrentFrame;
     struct LayerCache mCachedFrame;
+    //Enable 4kx2k yuv layer split
+    static bool sEnable4k2kYUVSplit;
+    bool allocSplitVGPipesfor4k2k(hwc_context_t *ctx,
+            hwc_display_contents_1_t* list, int index);
 };
 
 class MDPCompNonSplit : public MDPComp {
@@ -248,6 +265,14 @@ private:
     /* Checks for video pipes needed versus pipes available */
     virtual bool areVGPipesAvailable(hwc_context_t *ctx,
             hwc_display_contents_1_t* list);
+
+    /* increments mdpCount if 4k2k yuv layer split is enabled*/
+    virtual void modifymdpCountfor4k2k(hwc_context_t *ctx,
+             hwc_display_contents_1_t* list);
+
+    /* configures 4kx2k yuv layer to 2 VG pipes*/
+    virtual int configure4k2kYuv(hwc_context_t *ctx, hwc_layer_1_t *layer,
+            PipeLayerPair& PipeLayerPair);
 };
 
 class MDPCompSplit : public MDPComp {
@@ -280,6 +305,14 @@ private:
     /* Checks for video pipes needed versus pipes available */
     virtual bool areVGPipesAvailable(hwc_context_t *ctx,
             hwc_display_contents_1_t* list);
+
+    /* increments mdpCount if 4k2k yuv layer split is enabled*/
+    virtual void modifymdpCountfor4k2k(hwc_context_t *ctx,
+            hwc_display_contents_1_t* list);
+
+    /* configures 4kx2k yuv layer*/
+    virtual int configure4k2kYuv(hwc_context_t *ctx, hwc_layer_1_t *layer,
+            PipeLayerPair& PipeLayerPair);
 
     int pipesNeeded(hwc_context_t *ctx, hwc_display_contents_1_t* list,
             int mixer);

@@ -48,6 +48,8 @@ MDPVersion::MDPVersion()
     mMDPUpscale = 0;
     mMDPDownscale = 0;
     mPanelType = NO_PANEL;
+    mLowBw = 0;
+    mHighBw = 0;
 
     if(!updatePanelInfo()) {
         ALOGE("Unable to read Primary Panel Information");
@@ -168,8 +170,13 @@ bool MDPVersion::updateSysFsInfo() {
                 else if(!strncmp(tokens[0], "max_upscale_ratio",
                                 strlen("max_upscale_ratio"))) {
                     mMDPUpscale = atoi(tokens[1]);
-                }
-                else if(!strncmp(tokens[0], "features", strlen("features"))) {
+                } else if(!strncmp(tokens[0], "max_bandwidth_low",
+                        strlen("max_bandwidth_low"))) {
+                    mLowBw = atol(tokens[1]);
+                } else if(!strncmp(tokens[0], "max_bandwidth_high",
+                        strlen("max_bandwidth_high"))) {
+                    mHighBw = atol(tokens[1]);
+                } else if(!strncmp(tokens[0], "features", strlen("features"))) {
                     for(int i=1; i<index;i++) {
                         if(!strncmp(tokens[i], "bwc", strlen("bwc"))) {
                            mFeatures |= MDP_BWC_EN;
@@ -191,6 +198,9 @@ bool MDPVersion::updateSysFsInfo() {
                     mRGBPipes, mVGPipes);
     ALOGD_IF(DEBUG, "%s:mDMAPipes:%d \t mMDPDownscale:%d, mFeatures:%d",
                      __FUNCTION__,  mDMAPipes, mMDPDownscale, mFeatures);
+    ALOGD_IF(DEBUG, "%s:mLowBw: %lu mHighBw: %lu", __FUNCTION__,  mLowBw,
+            mHighBw);
+
     return true;
 }
 
@@ -234,32 +244,5 @@ bool MDPVersion::supportsBWC() {
     return (mFeatures & MDP_BWC_EN);
 }
 
-bool MDPVersion::is8x26() {
-    // check for 8x26 variants
-    // chip variants have same major number and minor numbers usually vary
-    // for e.g., MDSS_MDP_HW_REV_101 is 0x10010000
-    //                                    1001       -  major number
-    //                                        0000   -  minor number
-    // 8x26 v1 minor number is 0000
-    //      v2 minor number is 0001 etc..
-    if( mMdpRev >= MDSS_MDP_HW_REV_101 && mMdpRev < MDSS_MDP_HW_REV_102) {
-        return true;
-    }
-    return false;
-}
-
-bool MDPVersion::is8x74v2() {
-    if( mMdpRev >= MDSS_MDP_HW_REV_102 && mMdpRev < MDSS_MDP_HW_REV_200) {
-        return true;
-    }
-    return false;
-}
-
-bool MDPVersion::is8x92() {
-    if( mMdpRev >= MDSS_MDP_HW_REV_200 && mMdpRev < MDSS_MDP_HW_REV_206) {
-        return true;
-    }
-    return false;
-}
 }; //namespace qdutils
 

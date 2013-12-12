@@ -164,8 +164,6 @@ bool CopyBit::prepare(hwc_context_t *ctx, hwc_display_contents_1_t *list,
     LayerProp *layerProp = ctx->layerProp[dpy];
     size_t fbLayerIndex = ctx->listStats[dpy].fbLayerIndex;
     hwc_layer_1_t *fbLayer = &list->hwLayers[fbLayerIndex];
-    private_handle_t *fbHnd = (private_handle_t *)fbLayer->handle;
-
 
     // Following are MDP3 limitations for which we
     // need to fallback to GPU composition:
@@ -178,13 +176,14 @@ bool CopyBit::prepare(hwc_context_t *ctx, hwc_display_contents_1_t *list,
             hwc_layer_1_t *layer = (hwc_layer_1_t *) &list->hwLayers[i];
             if (layer->planeAlpha != 0xFF)
                 return true;
+            hwc_rect_t sourceCrop = integerizeSourceCrop(layer->sourceCropf);
 
             if (layer->transform & HAL_TRANSFORM_ROT_90) {
-                src_h = layer->sourceCrop.right - layer->sourceCrop.left;
-                src_w = layer->sourceCrop.bottom - layer->sourceCrop.top;
+                src_h = sourceCrop.right - sourceCrop.left;
+                src_w = sourceCrop.bottom - sourceCrop.top;
             } else {
-                src_h = layer->sourceCrop.bottom - layer->sourceCrop.top;
-                src_w = layer->sourceCrop.right - layer->sourceCrop.left;
+                src_h = sourceCrop.bottom - sourceCrop.top;
+                src_w = sourceCrop.right - sourceCrop.left;
             }
             dst_h = layer->displayFrame.bottom - layer->displayFrame.top;
             dst_w = layer->displayFrame.right - layer->displayFrame.left;
@@ -201,9 +200,9 @@ bool CopyBit::prepare(hwc_context_t *ctx, hwc_display_contents_1_t *list,
 
     //Allocate render buffers if they're not allocated
     if (useCopybitForYUV || useCopybitForRGB) {
-        int ret = allocRenderBuffers(fbHnd->width,
-                                     fbHnd->height,
-                                     fbHnd->format);
+        int ret = allocRenderBuffers(mAlignedFBWidth,
+                                     mAlignedFBHeight,
+                                     HAL_PIXEL_FORMAT_RGBA_8888);
         if (ret < 0) {
             return false;
         } else {
@@ -317,9 +316,10 @@ bool CopyBit::draw(hwc_context_t *ctx, hwc_display_contents_1_t *list,
         copybit_device_t *copybit = getCopyBitDevice();
         // Async mode
         copybit->flush_get_fence(copybit, fd);
-        if(mRelFd[0] >=0 && ctx->mMDP.version == qdutils::MDP_V3_0_4) {
-            close(mRelFd[0]);
-            mRelFd[0] = -1;
+        if(mRelFd[mCurRenderBufferIndex] >=0 &&
+           ctx->mMDP.version == qdutils::MDP_V3_0_4) {
+            close(mRelFd[mCurRenderBufferIndex]);
+            mRelFd[mCurRenderBufferIndex] = -1;
         }
     }
     return true;
@@ -427,8 +427,7 @@ int  CopyBit::drawLayerUsingCopybit(hwc_context_t *dev, hwc_layer_1_t *layer,
     float copybitsMinScale =
                        (float)copybit->get(copybit,COPYBIT_MINIFICATION_LIMIT);
 
-    if((layer->transform == HWC_TRANSFORM_ROT_90) ||
-                           (layer->transform == HWC_TRANSFORM_ROT_270)) {
+    if (layer->transform & HWC_TRANSFORM_ROT_90) {
         //swap screen width and height
         int tmp = screen_w;
         screen_w  = screen_h;
@@ -618,6 +617,7 @@ int CopyBit::fillColorUsingCopybit(hwc_layer_1_t *layer,
     copybit->set_parameter(copybit, COPYBIT_DITHER,
                            (dst.format == HAL_PIXEL_FORMAT_RGB_565) ?
                            COPYBIT_ENABLE : COPYBIT_DISABLE);
+    copybit->set_parameter(copybit, COPYBIT_TRANSFORM, 0);
     copybit->set_parameter(copybit, COPYBIT_BLEND_MODE, layer->blending);
     copybit->set_parameter(copybit, COPYBIT_PLANE_ALPHA, layer->planeAlpha);
     copybit->set_parameter(copybit, COPYBIT_BLIT_TO_FRAMEBUFFER,COPYBIT_ENABLE);
@@ -695,8 +695,15 @@ struct copybit_device_t* CopyBit::getCopyBitDevice() {
     return mEngine;
 }
 
-CopyBit::CopyBit():mIsModeOn(false), mCopyBitDraw(false),
-    mCurRenderBufferIndex(0){
+CopyBit::CopyBit(hwc_context_t *ctx, const int& dpy) : mIsModeOn(false),
+        mCopyBitDraw(false), mCurRenderBufferIndex(0) {
+
+    getBufferSizeAndDimensions(ctx->dpyAttr[dpy].xres,
+            ctx->dpyAttr[dpy].yres,
+            HAL_PIXEL_FORMAT_RGBA_8888,
+            mAlignedFBWidth,
+            mAlignedFBHeight);
+
     hw_module_t const *module;
     for (int i = 0; i < NUM_RENDER_BUFFERS; i++) {
         mRenderBuffer[i] = NULL;

@@ -52,6 +52,7 @@ Overlay::Overlay() {
 
     mDumpStr[0] = '\0';
     initScalar();
+    setDMAMultiplexingSupported();
 }
 
 Overlay::~Overlay() {
@@ -67,7 +68,6 @@ void Overlay::configBegin() {
         PipeBook::resetUse(i);
         PipeBook::resetAllocation(i);
     }
-    sForceSetBitmap = 0;
     mDumpStr[0] = '\0';
 
 #ifdef USES_QSEED_SCALAR
@@ -139,8 +139,10 @@ eDest Overlay::nextPipe(eMdpPipeType type, int dpy, int mixer) {
             (mPipeBook[i].mMixer == MIXER_UNUSED || //Free or same mixer
              mPipeBook[i].mMixer == mixer) &&
             PipeBook::isNotAllocated(i) && //Free pipe
-            !(sDMAMode == DMA_BLOCK_MODE && //DMA pipe in Line mode
-               PipeBook::getPipeType((eDest)i) == OV_MDP_PIPE_DMA)) {
+            ( (sDMAMultiplexingSupported && dpy) ||
+              !(sDMAMode == DMA_BLOCK_MODE && //DMA pipe in Line mode
+               PipeBook::getPipeType((eDest)i) == OV_MDP_PIPE_DMA)) ){
+              //DMA-Multiplexing is only supported for WB on 8x26
             dest = (eDest)i;
             PipeBook::setAllocation(i);
             break;
@@ -194,19 +196,14 @@ bool Overlay::commit(utils::eDest dest) {
     if(mPipeBook[index].mPipe->commit()) {
         ret = true;
         PipeBook::setUse((int)dest);
-        if(sForceSetBitmap & (1 << mPipeBook[index].mDisplay)) {
-            mPipeBook[index].mPipe->forceSet();
-        }
     } else {
         int dpy = mPipeBook[index].mDisplay;
-        for(int i = 0; i < PipeBook::NUM_PIPES; i++)
+        for(int i = 0; i < PipeBook::NUM_PIPES; i++) {
             if (mPipeBook[i].mDisplay == dpy) {
                 PipeBook::resetAllocation(i);
                 PipeBook::resetUse(i);
-                if(mPipeBook[i].valid()) {
-                    mPipeBook[i].mPipe->forceSet();
-                }
             }
+        }
     }
     return ret;
 }
@@ -434,9 +431,6 @@ void Overlay::clear(int dpy) {
             // Mark as available for this round
             PipeBook::resetUse(i);
             PipeBook::resetAllocation(i);
-            if(mPipeBook[i].valid()) {
-                mPipeBook[i].mPipe->forceSet();
-            }
         }
     }
 }
@@ -496,7 +490,7 @@ void Overlay::PipeBook::destroy() {
 Overlay* Overlay::sInstance = 0;
 int Overlay::sDpyFbMap[DPY_MAX] = {0, -1, -1};
 int Overlay::sDMAMode = DMA_LINE_MODE;
-int Overlay::sForceSetBitmap = 0;
+bool Overlay::sDMAMultiplexingSupported = false;
 int Overlay::PipeBook::NUM_PIPES = 0;
 int Overlay::PipeBook::sPipeUsageBitmap = 0;
 int Overlay::PipeBook::sLastUsageBitmap = 0;

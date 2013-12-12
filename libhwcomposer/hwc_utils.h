@@ -97,8 +97,9 @@ struct ListStats {
     int yuvCount;
     int yuvIndices[MAX_NUM_APP_LAYERS];
     int extOnlyLayerIndex;
-    bool needsAlphaScale;
     bool preMultipliedAlpha;
+    int yuv4k2kIndices[MAX_NUM_APP_LAYERS];
+    int yuv4k2kCount;
     // Notifies hwcomposer about the start and end of animation
     // This will be set to true during animation, otherwise false.
     bool isDisplayAnimating;
@@ -140,7 +141,11 @@ public:
     LayerRotMap() { reset(); }
     enum { MAX_SESS = 3 };
     void add(hwc_layer_1_t* layer, overlay::Rotator *rot);
+    //Resets the mapping of layer to rotator
     void reset();
+    //Clears mappings and existing rotator fences
+    //Intended to be used during errors
+    void clear();
     uint32_t getCount() const;
     hwc_layer_1_t* getLayer(uint32_t index) const;
     overlay::Rotator* getRot(uint32_t index) const;
@@ -199,8 +204,9 @@ void getNonWormholeRegion(hwc_display_contents_1_t* list,
 bool isSecuring(hwc_context_t* ctx, hwc_layer_1_t const* layer);
 bool isSecureModePolicy(int mdpVersion);
 bool isExternalActive(hwc_context_t* ctx);
-bool needsScaling(hwc_context_t* ctx, hwc_layer_1_t const* layer,
-                  const int& dpy);
+bool isAlphaScaled(hwc_layer_1_t const* layer);
+bool needsScaling(hwc_layer_1_t const* layer);
+bool isDownscaleRequired(hwc_layer_1_t const* layer);
 bool needsScalingWithSplit(hwc_context_t* ctx, hwc_layer_1_t const* layer,
                            const int& dpy);
 void sanitizeSourceCrop(hwc_rect_t& cropL, hwc_rect_t& cropR,
@@ -287,6 +293,13 @@ int configureSplit(hwc_context_t *ctx, hwc_layer_1_t *layer, const int& dpy,
         ovutils::eIsFg& isFg, const ovutils::eDest& lDest,
         const ovutils::eDest& rDest, overlay::Rotator **rot);
 
+//Routine to split and configure high resolution YUV layer (> 2048 width)
+int configureSourceSplit(hwc_context_t *ctx, hwc_layer_1_t *layer,
+        const int& dpy,
+        ovutils::eMdpFlags& mdpFlags, ovutils::eZorder& z,
+        ovutils::eIsFg& isFg, const ovutils::eDest& lDest,
+        const ovutils::eDest& rDest, overlay::Rotator **rot);
+
 //On certain targets DMA pipes are used for rotation and they won't be available
 //for line operations. On a per-target basis we can restrict certain use cases
 //from using rotator, since we know before-hand that such scenarios can lead to
@@ -307,6 +320,12 @@ static inline bool isSkipLayer(const hwc_layer_1_t* l) {
 // Returns true if the buffer is yuv
 static inline bool isYuvBuffer(const private_handle_t* hnd) {
     return (hnd && (hnd->bufferType == BUFFER_TYPE_VIDEO));
+}
+
+// Returns true if the buffer is yuv
+static inline bool is4kx2kYuvBuffer(const private_handle_t* hnd) {
+    return (hnd && (hnd->bufferType == BUFFER_TYPE_VIDEO) &&
+            (hnd->width > 2048));
 }
 
 // Returns true if the buffer is secure
@@ -418,6 +437,7 @@ struct hwc_context_t {
     qhwc::LayerProp *layerProp[HWC_NUM_DISPLAY_TYPES];
     qhwc::MDPComp *mMDPComp[HWC_NUM_DISPLAY_TYPES];
     qhwc::HwcDebug *mHwcDebug[HWC_NUM_DISPLAY_TYPES];
+    hwc_rect_t mViewFrame[HWC_NUM_DISPLAY_TYPES];
     qhwc::AssertiveDisplay *mAD;
     qhwc::VPUClient *mVPUClient;
 
