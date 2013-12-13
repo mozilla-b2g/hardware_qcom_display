@@ -637,6 +637,7 @@ static int fill_color(struct copybit_device_t *dev,
         return -EINVAL;
     }
 
+    int status = 0;
     struct blitReq* list = &ctx->list;
     mdp_blit_req* req = &list->req[list->count++];
     set_infos(ctx, req, MDP_SOLID_FILL);
@@ -654,7 +655,11 @@ static int fill_color(struct copybit_device_t *dev,
     req->const_color.b = (uint32_t)((color >> 16) & 0xff);
     req->const_color.alpha = (uint32_t)((color >> 24) & 0xff);
 
-    int status = msm_copybit(ctx, list);
+    if (list->count == sizeof(list->req)/sizeof(list->req[0])) {
+        status = msm_copybit(ctx, list);
+        list->sync.acq_fen_fd_cnt = 0;
+        list->count = 0;
+    }
     return status;
 }
 
@@ -714,6 +719,10 @@ static int open_copybit(const struct hw_module_t* module, const char* name,
     ctx->mAlpha = MDP_ALPHA_NOP;
     ctx->mFlags = 0;
     ctx->sync.flags = 0;
+    ctx->relFence = -1;
+    for (int i=0; i < MDP_MAX_FENCE_FD; i++) {
+        ctx->acqFence[i] = -1;
+    }
     ctx->sync.acq_fen_fd = ctx->acqFence;
     ctx->sync.rel_fen_fd = &ctx->relFence;
     ctx->list.count = 0;

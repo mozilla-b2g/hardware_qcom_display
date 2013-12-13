@@ -138,15 +138,6 @@ static void reset_layer_prop(hwc_context_t* ctx, int dpy, int numAppLayers) {
     ctx->layerProp[dpy] = new LayerProp[numAppLayers];
 }
 
-static void handleGeomChange(hwc_context_t *ctx, int dpy,
-        hwc_display_contents_1_t *list) {
-    /* No point to calling overlay_set on MDP3 */
-    if(list->flags & HWC_GEOMETRY_CHANGED &&
-            ctx->mMDP.version >= qdutils::MDP_V4_0) {
-        ctx->mOverlay->forceSet(dpy);
-    }
-}
-
 static int hwc_prepare_primary(hwc_composer_device_1 *dev,
         hwc_display_contents_1_t *list) {
     ATRACE_CALL();
@@ -155,22 +146,17 @@ static int hwc_prepare_primary(hwc_composer_device_1 *dev,
     if (LIKELY(list && list->numHwLayers > 1) &&
             ctx->dpyAttr[dpy].isActive) {
         reset_layer_prop(ctx, dpy, list->numHwLayers - 1);
-        handleGeomChange(ctx, dpy, list);
-        uint32_t last = list->numHwLayers - 1;
-        hwc_layer_1_t *fbLayer = &list->hwLayers[last];
-        if(fbLayer->handle) {
-            setListStats(ctx, list, dpy);
+        setListStats(ctx, list, dpy);
 #ifdef VPU_TARGET
-            ctx->mVPUClient->prepare(ctx, list);
+        ctx->mVPUClient->prepare(ctx, list);
 #endif
-            if(ctx->mMDPComp[dpy]->prepare(ctx, list) < 0) {
-                const int fbZ = 0;
-                ctx->mFBUpdate[dpy]->prepare(ctx, list, fbZ);
-            }
-            if (ctx->mMDP.version < qdutils::MDP_V4_0) {
-                if(ctx->mCopyBit[dpy])
-                    ctx->mCopyBit[dpy]->prepare(ctx, list, dpy);
-            }
+        if(ctx->mMDPComp[dpy]->prepare(ctx, list) < 0) {
+            const int fbZ = 0;
+            ctx->mFBUpdate[dpy]->prepare(ctx, list, fbZ);
+        }
+        if (ctx->mMDP.version < qdutils::MDP_V4_0) {
+            if(ctx->mCopyBit[dpy])
+                ctx->mCopyBit[dpy]->prepare(ctx, list, dpy);
         }
     }
     return 0;
@@ -186,25 +172,20 @@ static int hwc_prepare_external(hwc_composer_device_1 *dev,
             ctx->dpyAttr[dpy].isActive &&
             ctx->dpyAttr[dpy].connected) {
         reset_layer_prop(ctx, dpy, list->numHwLayers - 1);
-        handleGeomChange(ctx, dpy, list);
-        uint32_t last = list->numHwLayers - 1;
-        hwc_layer_1_t *fbLayer = &list->hwLayers[last];
         if(!ctx->dpyAttr[dpy].isPause) {
-            if(fbLayer->handle) {
-                ctx->dpyAttr[dpy].isConfiguring = false;
-                setListStats(ctx, list, dpy);
-                if(ctx->mMDPComp[dpy]->prepare(ctx, list) < 0) {
-                    const int fbZ = 0;
-                    ctx->mFBUpdate[dpy]->prepare(ctx, list, fbZ);
-                }
+            ctx->dpyAttr[dpy].isConfiguring = false;
+            setListStats(ctx, list, dpy);
+            if(ctx->mMDPComp[dpy]->prepare(ctx, list) < 0) {
+                const int fbZ = 0;
+                ctx->mFBUpdate[dpy]->prepare(ctx, list, fbZ);
+            }
 
-                if(ctx->listStats[dpy].isDisplayAnimating) {
-                    // Mark all app layers as HWC_OVERLAY for external during
-                    // animation, so that SF doesnt draw it on FB
-                    for(int i = 0 ;i < ctx->listStats[dpy].numAppLayers; i++) {
-                        hwc_layer_1_t *layer = &list->hwLayers[i];
-                        layer->compositionType = HWC_OVERLAY;
-                    }
+            if(ctx->listStats[dpy].isDisplayAnimating) {
+                // Mark all app layers as HWC_OVERLAY for external during
+                // animation, so that SF doesnt draw it on FB
+                for(int i = 0 ;i < ctx->listStats[dpy].numAppLayers; i++) {
+                    hwc_layer_1_t *layer = &list->hwLayers[i];
+                    layer->compositionType = HWC_OVERLAY;
                 }
             }
         } else {
@@ -229,25 +210,20 @@ static int hwc_prepare_virtual(hwc_composer_device_1 *dev,
             ctx->dpyAttr[dpy].isActive &&
             ctx->dpyAttr[dpy].connected) {
         reset_layer_prop(ctx, dpy, list->numHwLayers - 1);
-        handleGeomChange(ctx, dpy, list);
-        uint32_t last = list->numHwLayers - 1;
-        hwc_layer_1_t *fbLayer = &list->hwLayers[last];
         if(!ctx->dpyAttr[dpy].isPause) {
-            if(fbLayer->handle) {
-                ctx->dpyAttr[dpy].isConfiguring = false;
-                setListStats(ctx, list, dpy);
-                if(ctx->mMDPComp[dpy]->prepare(ctx, list) < 0) {
-                    const int fbZ = 0;
-                    ctx->mFBUpdate[dpy]->prepare(ctx, list, fbZ);
-                }
+            ctx->dpyAttr[dpy].isConfiguring = false;
+            setListStats(ctx, list, dpy);
+            if(ctx->mMDPComp[dpy]->prepare(ctx, list) < 0) {
+                const int fbZ = 0;
+                ctx->mFBUpdate[dpy]->prepare(ctx, list, fbZ);
+            }
 
-                if(ctx->listStats[dpy].isDisplayAnimating) {
-                    // Mark all app layers as HWC_OVERLAY for virtual during
-                    // animation, so that SF doesnt draw it on FB
-                    for(int i = 0 ;i < ctx->listStats[dpy].numAppLayers; i++) {
-                        hwc_layer_1_t *layer = &list->hwLayers[i];
-                        layer->compositionType = HWC_OVERLAY;
-                    }
+            if(ctx->listStats[dpy].isDisplayAnimating) {
+                // Mark all app layers as HWC_OVERLAY for virtual during
+                // animation, so that SF doesnt draw it on FB
+                for(int i = 0 ;i < ctx->listStats[dpy].numAppLayers; i++) {
+                    hwc_layer_1_t *layer = &list->hwLayers[i];
+                    layer->compositionType = HWC_OVERLAY;
                 }
             }
         } else {
