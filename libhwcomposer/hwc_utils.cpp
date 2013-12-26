@@ -172,6 +172,7 @@ void initContext(hwc_context_t *ctx)
     for (uint32_t i = 0; i < HWC_NUM_DISPLAY_TYPES; i++) {
         ctx->mHwcDebug[i] = new HwcDebug(i);
         ctx->mLayerRotMap[i] = new LayerRotMap();
+        ctx->mAnimationState[i] = ANIMATION_STOPPED;
     }
 
     MDPComp::init(ctx);
@@ -189,13 +190,8 @@ void initContext(hwc_context_t *ctx)
             defaultServiceManager()->getService(
             String16("display.qservice")))->connect(client);
 
-    // Initialize "No animation on external display" related  parameters.
+    // Initialize device orientation to its default orientation
     ctx->deviceOrientation = 0;
-    ctx->mPrevCropVideo.left = ctx->mPrevCropVideo.top =
-        ctx->mPrevCropVideo.right = ctx->mPrevCropVideo.bottom = 0;
-    ctx->mPrevDestVideo.left = ctx->mPrevDestVideo.top =
-        ctx->mPrevDestVideo.right = ctx->mPrevDestVideo.bottom = 0;
-    ctx->mPrevTransformVideo = 0;
     ctx->mBufferMirrorMode = false;
 #ifdef VPU_TARGET
     ctx->mVPUClient = new VPUClient();
@@ -1192,7 +1188,8 @@ int hwc_sync(hwc_context_t *ctx, hwc_display_contents_1_t* list, int dpy,
 
     //Accumulate acquireFenceFds for MDP
     for(uint32_t i = 0; i < list->numHwLayers; i++) {
-        if(list->hwLayers[i].compositionType == HWC_OVERLAY &&
+        if((list->hwLayers[i].compositionType == HWC_OVERLAY  ||
+                        list->hwLayers[i].compositionType == HWC_BLIT) &&
                         list->hwLayers[i].acquireFenceFd >= 0) {
             if(UNLIKELY(swapzero))
                 acquireFd[count++] = -1;
@@ -1234,6 +1231,7 @@ int hwc_sync(hwc_context_t *ctx, hwc_display_contents_1_t* list, int dpy,
 
     for(uint32_t i = 0; i < list->numHwLayers; i++) {
         if(list->hwLayers[i].compositionType == HWC_OVERLAY ||
+           list->hwLayers[i].compositionType == HWC_BLIT ||
            list->hwLayers[i].compositionType == HWC_FRAMEBUFFER_TARGET) {
             //Populate releaseFenceFds.
             if(UNLIKELY(swapzero)) {
@@ -1241,12 +1239,7 @@ int hwc_sync(hwc_context_t *ctx, hwc_display_contents_1_t* list, int dpy,
             } else if(isExtAnimating) {
                 // Release all the app layer fds immediately,
                 // if animation is in progress.
-                hwc_layer_1_t const* layer = &list->hwLayers[i];
-                private_handle_t *hnd = (private_handle_t *)layer->handle;
-                if(isYuvBuffer(hnd)) {
-                    list->hwLayers[i].releaseFenceFd = dup(releaseFd);
-                } else
-                    list->hwLayers[i].releaseFenceFd = -1;
+                list->hwLayers[i].releaseFenceFd = -1;
             } else if(list->hwLayers[i].releaseFenceFd < 0) {
                 //If rotator has not already populated this field.
                 list->hwLayers[i].releaseFenceFd = dup(releaseFd);
@@ -1412,6 +1405,7 @@ int configColorLayer(hwc_context_t *ctx, hwc_layer_1_t *layer,
     uint32_t color = layer->transform;
     Whf whf(w, h, getMdpFormat(HAL_PIXEL_FORMAT_RGBA_8888), 0);
 
+    ovutils::setMdpFlags(mdpFlags, ovutils::OV_MDP_SOLID_FILL);
     if (layer->blending == HWC_BLENDING_PREMULT)
         ovutils::setMdpFlags(mdpFlags, ovutils::OV_MDP_BLEND_FG_PREMULT);
 
@@ -1493,29 +1487,7 @@ int configureNonSplit(hwc_context_t *ctx, hwc_layer_1_t *layer,
             whf.format = getMdpFormat(HAL_PIXEL_FORMAT_BGRX_8888);
     }
 
-    if(dpy && isYuvBuffer(hnd)) {
-        if(!ctx->listStats[dpy].isDisplayAnimating) {
-            ctx->mPrevCropVideo = crop;
-            ctx->mPrevDestVideo = dst;
-            ctx->mPrevTransformVideo = transform;
-        } else {
-            // Restore the previous crop, dest rect and transform values, during
-            // animation to avoid displaying videos at random coordinates.
-            crop = ctx->mPrevCropVideo;
-            dst = ctx->mPrevDestVideo;
-            transform = ctx->mPrevTransformVideo;
-            orient = static_cast<eTransform>(transform);
-            //In you tube use case when a device rotated from landscape to
-            // portrait, set the isFg flag and zOrder to avoid displaying UI on
-            // hdmi during animation
-            if(ctx->deviceOrientation) {
-                isFg = ovutils::IS_FG_SET;
-                z = ZORDER_1;
-            }
-        }
-        calcExtDisplayPosition(ctx, hnd, dpy, crop, dst,
-                                           transform, orient);
-    }
+    calcExtDisplayPosition(ctx, hnd, dpy, crop, dst, transform, orient);
 
     if(isYuvBuffer(hnd) && ctx->mMDP.version >= qdutils::MDP_V4_2 &&
        ctx->mMDP.version < qdutils::MDSS_V5) {
@@ -1621,28 +1593,6 @@ int configureSplit(hwc_context_t *ctx, hwc_layer_1_t *layer,
             whf.format = getMdpFormat(HAL_PIXEL_FORMAT_BGRA_8888);
         else if (hnd->format == HAL_PIXEL_FORMAT_RGBX_8888)
             whf.format = getMdpFormat(HAL_PIXEL_FORMAT_BGRX_8888);
-    }
-
-    if(dpy && isYuvBuffer(hnd)) {
-        if(!ctx->listStats[dpy].isDisplayAnimating) {
-            ctx->mPrevCropVideo = crop;
-            ctx->mPrevDestVideo = dst;
-            ctx->mPrevTransformVideo = transform;
-        } else {
-            // Restore the previous crop, dest rect and transform values, during
-            // animation to avoid displaying videos at random coordinates.
-            crop = ctx->mPrevCropVideo;
-            dst = ctx->mPrevDestVideo;
-            transform = ctx->mPrevTransformVideo;
-            orient = static_cast<eTransform>(transform);
-            //In you tube use case when a device rotated from landscape to
-            // portrait, set the isFg flag and zOrder to avoid displaying UI on
-            // hdmi during animation
-            if(ctx->deviceOrientation) {
-                isFg = ovutils::IS_FG_SET;
-                z = ZORDER_1;
-            }
-        }
     }
 
     setMdpFlags(layer, mdpFlagsL, 0, transform);
