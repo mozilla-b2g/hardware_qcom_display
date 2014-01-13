@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2010 The Android Open Source Project
- * Copyright (C)2012-2013, The Linux Foundation. All rights reserved.
+ * Copyright (C)2012-2014, The Linux Foundation. All rights reserved.
  *
  * Not a Contribution, Apache license notifications and license are retained
  * for attribution purposes only.
@@ -89,6 +89,11 @@ struct DisplayAttributes {
     bool mDownScaleMode;
     // Ext dst Rect
     hwc_rect_t mDstRect;
+    //Action safe attributes
+    // Flag to indicate the presence of action safe dimensions for external
+    bool mActionSafePresent;
+    int mAsWidthRatio;
+    int mAsHeightRatio;
 };
 
 struct ListStats {
@@ -230,6 +235,9 @@ void optimizeLayerRects(hwc_context_t *ctx,
 bool areLayersIntersecting(const hwc_layer_1_t* layer1,
         const hwc_layer_1_t* layer2);
 
+// returns true if Action safe dimensions are set and target supports Actionsafe
+bool isActionSafePresent(hwc_context_t *ctx, int dpy);
+
 /* Calculates the destination position based on the action safe rectangle */
 void getActionSafePosition(hwc_context_t *ctx, int dpy, hwc_rect_t& dst);
 
@@ -254,6 +262,10 @@ void calcExtDisplayPosition(hwc_context_t *ctx,
 // Returns the orientation that needs to be set on external for
 // BufferMirrirMode(Sidesync)
 int getMirrorModeOrientation(hwc_context_t *ctx);
+
+// Handles wfd Pause and resume events
+void handle_pause(hwc_context_t *ctx, int dpy);
+void handle_resume(hwc_context_t *ctx, int dpy);
 
 //Close acquireFenceFds of all layers of incoming list
 void closeAcquireFds(hwc_display_contents_1_t* list);
