@@ -144,7 +144,14 @@ bool MDPVersion::updateSysFsInfo() {
                 __FUNCTION__, sysfsPath);
         return false;
     } else {
-        while((read = getline(&line, &len, sysfsFd)) != -1) {
+        for (;;) {
+            len = 256;
+            line = (char *) malloc(len);
+            if (NULL == line) break;
+
+            read = getline(&line, &len, sysfsFd);
+            if (-1 == read) break;
+
             int index=0;
             char *tokens[10];
             memset(tokens, 0, sizeof(tokens));
@@ -191,6 +198,7 @@ bool MDPVersion::updateSysFsInfo() {
             free(line);
             line = NULL;
         }
+        if (line) free(line);
         fclose(sysfsFd);
     }
     ALOGD_IF(DEBUG, "%s: mMDPVersion: %d mMdpRev: %x mRGBPipes:%d,"
