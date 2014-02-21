@@ -200,6 +200,14 @@ void initContext(hwc_context_t *ctx)
     // Initialize device orientation to its default orientation
     ctx->deviceOrientation = 0;
     ctx->mBufferMirrorMode = false;
+    ctx->mVPUClient = NULL;
+
+    // Read the system property to determine if downscale feature is enabled.
+    ctx->mMDPDownscaleEnabled = false;
+    if(property_get("sys.hwc.mdp_downscale_enabled", value, "false")
+            && !strcmp(value, "true")) {
+        ctx->mMDPDownscaleEnabled = true;
+    }
 
 #ifdef VPU_TARGET
     ctx->mVPUClient = new VPUClient();
