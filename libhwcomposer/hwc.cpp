@@ -104,17 +104,27 @@ static void hwc_registerProcs(struct hwc_composer_device_1* dev,
 //Helper
 static void reset(hwc_context_t *ctx, int numDisplays,
                   hwc_display_contents_1_t** displays) {
+
+    ctx->numActiveDisplays = 0;
     for(int i = 0; i < HWC_NUM_DISPLAY_TYPES; i++) {
         hwc_display_contents_1_t *list = displays[i];
         // XXX:SurfaceFlinger no longer guarantees that this
         // value is reset on every prepare. However, for the layer
         // cache we need to reset it.
         // We can probably rethink that later on
-        if (LIKELY(list && list->numHwLayers > 1)) {
+        if (LIKELY(list && list->numHwLayers > 0)) {
             for(uint32_t j = 0; j < list->numHwLayers; j++) {
                 if(list->hwLayers[j].compositionType != HWC_FRAMEBUFFER_TARGET)
                     list->hwLayers[j].compositionType = HWC_FRAMEBUFFER;
             }
+
+            /* For display devices like SSD and screenrecord, we cannot
+             * rely on isActive and connected attributes of dpyAttr to
+             * determine if the displaydevice is active. Hence in case if
+             * the layer-list is non-null and numHwLayers > 0, we assume
+             * the display device to be active.
+             */
+            ctx->numActiveDisplays += 1;
         }
 
         if(ctx->mFBUpdate[i])
@@ -123,6 +133,7 @@ static void reset(hwc_context_t *ctx, int numDisplays,
             ctx->mCopyBit[i]->reset();
         if(ctx->mLayerRotMap[i])
             ctx->mLayerRotMap[i]->reset();
+
     }
 
     ctx->mAD->reset();
@@ -152,7 +163,7 @@ static int hwc_prepare_primary(hwc_composer_device_1 *dev,
 #endif
         if(ctx->mMDPComp[dpy]->prepare(ctx, list) < 0) {
             const int fbZ = 0;
-            ctx->mFBUpdate[dpy]->prepare(ctx, list, fbZ);
+            ctx->mFBUpdate[dpy]->prepareAndValidate(ctx, list, fbZ);
         }
         if (ctx->mMDP.version < qdutils::MDP_V4_0) {
             if(ctx->mCopyBit[dpy])
@@ -177,7 +188,7 @@ static int hwc_prepare_external(hwc_composer_device_1 *dev,
             setListStats(ctx, list, dpy);
             if(ctx->mMDPComp[dpy]->prepare(ctx, list) < 0) {
                 const int fbZ = 0;
-                ctx->mFBUpdate[dpy]->prepare(ctx, list, fbZ);
+                ctx->mFBUpdate[dpy]->prepareAndValidate(ctx, list, fbZ);
             }
         } else {
             /* External Display is in Pause state.
@@ -209,7 +220,7 @@ static int hwc_prepare_virtual(hwc_composer_device_1 *dev,
             setListStats(ctx, list, dpy);
             if(ctx->mMDPComp[dpy]->prepare(ctx, list) < 0) {
                 const int fbZ = 0;
-                ctx->mFBUpdate[dpy]->prepare(ctx, list, fbZ);
+                ctx->mFBUpdate[dpy]->prepareAndValidate(ctx, list, fbZ);
             }
         } else {
             /* Virtual Display is in Pause state.
@@ -245,7 +256,7 @@ static int hwc_prepare(hwc_composer_device_1 *dev, size_t numDisplays,
     ctx->mRotMgr->configBegin();
     overlay::Writeback::configBegin();
 
-    for (int32_t i = numDisplays; i >= 0; i--) {
+    for (int32_t i = (numDisplays-1); i >= 0; i--) {
         hwc_display_contents_1_t *list = displays[i];
         int dpy = getDpyforExternalDisplay(ctx, i);
         switch(dpy) {
@@ -405,8 +416,11 @@ static void reset_panel(struct hwc_composer_device_1* dev)
     int ret = 0;
     hwc_context_t* ctx = (hwc_context_t*)(dev);
 
-    if (!ctx->mPanelResetStatus)
+    if (!ctx->dpyAttr[HWC_DISPLAY_PRIMARY].isActive) {
+        ALOGD ("%s : Display OFF - Skip BLANK & UNBLANK", __FUNCTION__);
+        ctx->mPanelResetStatus = false;
         return;
+    }
 
     ALOGD("%s: calling BLANK DISPLAY", __FUNCTION__);
     ret = hwc_blank(dev, HWC_DISPLAY_PRIMARY, 1);
@@ -642,7 +656,7 @@ static int hwc_set(hwc_composer_device_1 *dev,
 {
     int ret = 0;
     hwc_context_t* ctx = (hwc_context_t*)(dev);
-    for (uint32_t i = 0; i <= numDisplays; i++) {
+    for (uint32_t i = 0; i < numDisplays; i++) {
         hwc_display_contents_1_t* list = displays[i];
         int dpy = getDpyforExternalDisplay(ctx, i);
         switch(dpy) {

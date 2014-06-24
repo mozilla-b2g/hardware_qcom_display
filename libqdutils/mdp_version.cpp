@@ -37,6 +37,25 @@ namespace qdutils {
 
 #define TOKEN_PARAMS_DELIM  "="
 
+#ifndef MDSS_MDP_REV
+enum mdp_rev {
+    MDSS_MDP_HW_REV_100 = 0x10000000, //8974 v1
+    MDSS_MDP_HW_REV_101 = 0x10010000, //8x26
+    MDSS_MDP_HW_REV_102 = 0x10020000, //8974 v2
+    MDSS_MDP_HW_REV_103 = 0x10030000, //8084
+    MDSS_MDP_HW_REV_104 = 0x10040000, //Next version
+    MDSS_MDP_HW_REV_105 = 0x10050000, //Next version
+    MDSS_MDP_HW_REV_107 = 0x10070000, //Next version
+    MDSS_MDP_HW_REV_200 = 0x20000000, //8092
+    MDSS_MDP_HW_REV_206 = 0x20060000, //Future
+};
+#else
+enum mdp_rev {
+    MDSS_MDP_HW_REV_104 = 0x10040000, //Next version
+    MDSS_MDP_HW_REV_206 = 0x20060000, //Future
+};
+#endif
+
 MDPVersion::MDPVersion()
 {
     mMDPVersion = MDSS_V5;
@@ -129,7 +148,7 @@ bool MDPVersion::updatePanelInfo() {
 // and parses and updates information accordingly.
 bool MDPVersion::updateSysFsInfo() {
     FILE *sysfsFd;
-    size_t len = 0;
+    size_t len = PAGE_SIZE;
     ssize_t read;
     char *line = NULL;
     char sysfsPath[255];
@@ -144,14 +163,8 @@ bool MDPVersion::updateSysFsInfo() {
                 __FUNCTION__, sysfsPath);
         return false;
     } else {
-        for (;;) {
-            len = 256;
-            line = (char *) malloc(len);
-            if (NULL == line) break;
-
-            read = getline(&line, &len, sysfsFd);
-            if (-1 == read) break;
-
+        line = (char *) malloc(len);
+        while((read = getline(&line, &len, sysfsFd)) != -1) {
             int index=0;
             char *tokens[10];
             memset(tokens, 0, sizeof(tokens));
@@ -195,10 +208,8 @@ bool MDPVersion::updateSysFsInfo() {
                     }
                 }
             }
-            free(line);
-            line = NULL;
         }
-        if (line) free(line);
+        free(line);
         fclose(sysfsFd);
     }
     ALOGD_IF(DEBUG, "%s: mMDPVersion: %d mMdpRev: %x mRGBPipes:%d,"
@@ -250,6 +261,26 @@ uint32_t MDPVersion::getMaxMDPDownscale() {
 bool MDPVersion::supportsBWC() {
     // BWC - Bandwidth Compression
     return (mFeatures & MDP_BWC_EN);
+}
+
+bool MDPVersion::is8x26() {
+    return (mMdpRev >= MDSS_MDP_HW_REV_101 and
+            mMdpRev < MDSS_MDP_HW_REV_102);
+}
+
+bool MDPVersion::is8x74v2() {
+    return (mMdpRev >= MDSS_MDP_HW_REV_102 and
+            mMdpRev < MDSS_MDP_HW_REV_103);
+}
+
+bool MDPVersion::is8084() {
+    return (mMdpRev >= MDSS_MDP_HW_REV_103 and
+            mMdpRev < MDSS_MDP_HW_REV_104);
+}
+
+bool MDPVersion::is8092() {
+    return (mMdpRev >= MDSS_MDP_HW_REV_200 and
+            mMdpRev < MDSS_MDP_HW_REV_206);
 }
 
 }; //namespace qdutils

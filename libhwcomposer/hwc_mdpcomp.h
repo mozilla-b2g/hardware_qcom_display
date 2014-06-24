@@ -52,7 +52,7 @@ public:
     /* Initialize MDP comp*/
     static bool init(hwc_context_t *ctx);
     static void resetIdleFallBack() { sIdleFallBack = false; }
-    static void reset() { sBwClaimed = 0.0; };
+    static void reset() { sHandleTimeout = false; };
 
 protected:
     enum { MAX_SEC_LAYERS = 1 }; //TODO add property support
@@ -136,9 +136,6 @@ protected:
     /* configures MPD pipes */
     virtual int configure(hwc_context_t *ctx, hwc_layer_1_t *layer,
                           PipeLayerPair& pipeLayerPair) = 0;
-    /* Checks for pipes needed versus pipes available */
-    virtual bool arePipesAvailable(hwc_context_t *ctx,
-            hwc_display_contents_1_t* list) = 0;
     /* Increments mdpCount if 4k2k yuv layer split is enabled.
      * updates framebuffer z order if fb lies above source-split layer */
     virtual void adjustForSourceSplit(hwc_context_t *ctx,
@@ -161,16 +158,11 @@ protected:
     bool partialMDPComp(hwc_context_t *ctx, hwc_display_contents_1_t* list);
     /* Partial MDP comp that uses caching to save power as primary goal */
     bool cacheBasedComp(hwc_context_t *ctx, hwc_display_contents_1_t* list);
-    /* Partial MDP comp that prefers GPU perf-wise. Since the GPU's
-     * perf is proportional to the pixels it processes, we use the number of
-     * pixels as a heuristic */
-    bool loadBasedCompPreferGPU(hwc_context_t *ctx,
-            hwc_display_contents_1_t* list);
-    /* Partial MDP comp that prefers MDP perf-wise. Since the MDP's perf is
-     * proportional to the bandwidth, overlaps it sees, we use that as a
-     * heuristic */
-    bool loadBasedCompPreferMDP(hwc_context_t *ctx,
-            hwc_display_contents_1_t* list);
+    /* Partial MDP comp that balances the load between MDP and GPU such that
+     * MDP is loaded to the max of its capacity. The lower z order layers are
+     * fed to MDP, whereas the upper ones to GPU, because the upper ones have
+     * lower number of pixels and can reduce GPU processing time */
+    bool loadBasedComp(hwc_context_t *ctx, hwc_display_contents_1_t* list);
     /* Checks if its worth doing load based partial comp */
     bool isLoadBasedCompDoable(hwc_context_t *ctx,
             hwc_display_contents_1_t* list);
@@ -180,11 +172,6 @@ protected:
             bool secureOnly);
     /* checks for conditions where YUV layers cannot be bypassed */
     bool isYUVDoable(hwc_context_t* ctx, hwc_layer_1_t* layer);
-    /* calcs bytes read by MDP in gigs for a given frame */
-    double calcMDPBytesRead(hwc_context_t *ctx,
-            hwc_display_contents_1_t* list);
-    /* checks if the required bandwidth exceeds a certain max */
-    bool bandwidthCheck(hwc_context_t *ctx, const double& size);
     /* checks if MDP/MDSS can process current list w.r.to HW limitations
      * All peculiar HW limitations should go here */
     bool hwLimitationsCheck(hwc_context_t* ctx, hwc_display_contents_1_t* list);
@@ -235,12 +222,9 @@ protected:
     static bool sEnablePartialFrameUpdate;
     static bool sDebugLogs;
     static bool sIdleFallBack;
+    /* Handles the timeout event from kernel, if the value is set to true */
+    static bool sHandleTimeout;
     static int sMaxPipesPerMixer;
-    //Max bandwidth. Value is in GBPS. For ex: 2.3 means 2.3GBPS
-    static double sMaxBw;
-    //Tracks composition bandwidth claimed. Represented as the total
-    //w*h*bpp*fps (gigabytes-per-second) going to MDP mixers.
-    static double sBwClaimed;
     static IdleInvalidator *idleInvalidator;
     struct FrameInfo mCurrentFrame;
     struct LayerCache mCachedFrame;
@@ -269,14 +253,6 @@ private:
     /* allocates pipes to selected candidates */
     virtual bool allocLayerPipes(hwc_context_t *ctx,
                                  hwc_display_contents_1_t* list);
-
-    /* Checks for pipes needed versus pipes available */
-    virtual bool arePipesAvailable(hwc_context_t *ctx,
-            hwc_display_contents_1_t* list);
-
-    /* Checks for video pipes needed versus pipes available */
-    virtual bool areVGPipesAvailable(hwc_context_t *ctx,
-            hwc_display_contents_1_t* list);
 
     /* Increments mdpCount if 4k2k yuv layer split is enabled.
      * updates framebuffer z order if fb lies above source-split layer */
@@ -311,14 +287,6 @@ private:
     virtual bool allocLayerPipes(hwc_context_t *ctx,
                                  hwc_display_contents_1_t* list);
 
-    /* Checks for pipes needed versus pipes available */
-    virtual bool arePipesAvailable(hwc_context_t *ctx,
-            hwc_display_contents_1_t* list);
-
-    /* Checks for video pipes needed versus pipes available */
-    virtual bool areVGPipesAvailable(hwc_context_t *ctx,
-            hwc_display_contents_1_t* list);
-
     /* Increments mdpCount if 4k2k yuv layer split is enabled.
      * updates framebuffer z order if fb lies above source-split layer */
     virtual void adjustForSourceSplit(hwc_context_t *ctx,
@@ -327,9 +295,6 @@ private:
     /* configures 4kx2k yuv layer*/
     virtual int configure4k2kYuv(hwc_context_t *ctx, hwc_layer_1_t *layer,
             PipeLayerPair& PipeLayerPair);
-
-    int pipesNeeded(hwc_context_t *ctx, hwc_display_contents_1_t* list,
-            int mixer);
 };
 
 }; //namespace

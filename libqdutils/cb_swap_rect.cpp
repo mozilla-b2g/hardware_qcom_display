@@ -1,6 +1,6 @@
 /*
- * Copyright (c) 2012, The Linux Foundation. All rights reserved.
-
+ * Copyright (C) 2014, The Linux Foundation. All rights reserved.
+ *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
  * met:
@@ -10,7 +10,7 @@
  *     copyright notice, this list of conditions and the following
  *     disclaimer in the documentation and/or other materials provided
  *     with the distribution.
- *   * Neither the name of The Linux Foundation nor the names of its
+ *   * Neither the name of The Linux Foundation or the names of its
  *     contributors may be used to endorse or promote products derived
  *     from this software without specific prior written permission.
  *
@@ -27,31 +27,20 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef INCLUDE_IDLEINVALIDATOR
-#define INCLUDE_IDLEINVALIDATOR
+#include "cb_swap_rect.h"
 
-#include <cutils/log.h>
-#include <utils/threads.h>
-#include <gr.h>
+ANDROID_SINGLETON_STATIC_INSTANCE(qdutils::cb_swap_rect);
 
-typedef void (*InvalidatorHandler)(void*);
+namespace qdutils {
 
-class IdleInvalidator : public android::Thread {
-    void *mHwcContext;
-    int mTimeoutEventFd;
-    static InvalidatorHandler mHandler;
-    static android::sp<IdleInvalidator> sInstance;
+cb_swap_rect:: cb_swap_rect(){
+     swap_rect_feature_on = false ;
+}
+void cb_swap_rect::setSwapRectFeature_on( bool value){
+       swap_rect_feature_on = value ;
+}
+bool cb_swap_rect::checkSwapRectFeature_on(){
+       return swap_rect_feature_on;
+}
 
-    public:
-    IdleInvalidator();
-    /* init timer obj */
-    int init(InvalidatorHandler reg_handler, void* user_data, unsigned int
-             idleSleepTime);
-    /*Overrides*/
-    virtual bool        threadLoop();
-    virtual int         readyToRun();
-    virtual void        onFirstRef();
-    static IdleInvalidator *getInstance();
 };
-
-#endif // INCLUDE_IDLEINVALIDATOR

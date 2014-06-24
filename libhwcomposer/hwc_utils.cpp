@@ -129,6 +129,7 @@ static int openFramebufferDevice(hwc_context_t *ctx)
 void initContext(hwc_context_t *ctx)
 {
     openFramebufferDevice(ctx);
+    char value[PROPERTY_VALUE_MAX];
     ctx->mMDP.version = qdutils::MDPVersion::getInstance().getMDPVersion();
     ctx->mMDP.hasOverlay = qdutils::MDPVersion::getInstance().hasOverlay();
     ctx->mMDP.panel = qdutils::MDPVersion::getInstance().getPanelType();
@@ -186,6 +187,7 @@ void initContext(hwc_context_t *ctx)
     ctx->vstate.enable = false;
     ctx->vstate.fakevsync = false;
     ctx->mExtOrientation = 0;
+    ctx->numActiveDisplays = 1;
 
     //Right now hwc starts the service but anybody could do it, or it could be
     //independent process as well.
@@ -198,6 +200,15 @@ void initContext(hwc_context_t *ctx)
     // Initialize device orientation to its default orientation
     ctx->deviceOrientation = 0;
     ctx->mBufferMirrorMode = false;
+    ctx->mVPUClient = NULL;
+
+    // Read the system property to determine if downscale feature is enabled.
+    ctx->mMDPDownscaleEnabled = false;
+    if(property_get("sys.hwc.mdp_downscale_enabled", value, "false")
+            && !strcmp(value, "true")) {
+        ctx->mMDPDownscaleEnabled = true;
+    }
+
 #ifdef VPU_TARGET
     ctx->mVPUClient = new VPUClient();
 #endif
@@ -604,6 +615,21 @@ int getMirrorModeOrientation(hwc_context_t *ctx) {
     return extOrientation;
 }
 
+/* Get External State names */
+const char* getExternalDisplayState(uint32_t external_state) {
+    static const char* externalStates[EXTERNAL_MAXSTATES] = {0};
+    externalStates[EXTERNAL_OFFLINE] = STR(EXTERNAL_OFFLINE);
+    externalStates[EXTERNAL_ONLINE]  = STR(EXTERNAL_ONLINE);
+    externalStates[EXTERNAL_PAUSE]   = STR(EXTERNAL_PAUSE);
+    externalStates[EXTERNAL_RESUME]  = STR(EXTERNAL_RESUME);
+
+    if(external_state >= EXTERNAL_MAXSTATES) {
+        return "EXTERNAL_INVALID";
+    }
+
+    return externalStates[external_state];
+}
+
 bool isDownscaleRequired(hwc_layer_1_t const* layer) {
     hwc_rect_t displayFrame  = layer->displayFrame;
     hwc_rect_t sourceCrop = integerizeSourceCrop(layer->sourceCropf);
@@ -738,6 +764,28 @@ static void trimList(hwc_context_t *ctx, hwc_display_contents_1_t *list,
     }
 }
 
+hwc_rect_t calculateDisplayViewFrame(hwc_context_t *ctx, int dpy) {
+    int dstWidth = ctx->dpyAttr[dpy].xres;
+    int dstHeight = ctx->dpyAttr[dpy].yres;
+    int srcWidth = ctx->dpyAttr[HWC_DISPLAY_PRIMARY].xres;
+    int srcHeight = ctx->dpyAttr[HWC_DISPLAY_PRIMARY].yres;
+    // default we assume viewframe as a full frame for primary display
+    hwc_rect outRect = {0, 0, dstWidth, dstHeight};
+    if(dpy) {
+        // swap srcWidth and srcHeight, if the device orientation is 90 or 270.
+        if(ctx->deviceOrientation & 0x1) {
+            swap(srcWidth, srcHeight);
+        }
+        // Get Aspect Ratio for external
+        getAspectRatioPosition(dstWidth, dstHeight, srcWidth,
+                            srcHeight, outRect);
+    }
+    ALOGD_IF(HWC_UTILS_DEBUG, "%s: view frame for dpy %d is [%d %d %d %d]",
+        __FUNCTION__, dpy, outRect.left, outRect.top,
+        outRect.right, outRect.bottom);
+    return outRect;
+}
+
 void setListStats(hwc_context_t *ctx,
         hwc_display_contents_1_t *list, int dpy) {
     const int prevYuvCount = ctx->listStats[dpy].yuvCount;
@@ -758,6 +806,10 @@ void setListStats(hwc_context_t *ctx,
     ctx->mViewFrame[dpy] = (hwc_rect_t){0, 0, 0, 0};
     ctx->dpyAttr[dpy].mActionSafePresent = isActionSafePresent(ctx, dpy);
 
+    // Calculate view frame of ext display from primary resolution
+    // and primary device orientation.
+    ctx->mViewFrame[dpy] = calculateDisplayViewFrame(ctx, dpy);
+
     trimList(ctx, list, dpy);
     optimizeLayerRects(ctx, list, dpy);
 
@@ -765,9 +817,6 @@ void setListStats(hwc_context_t *ctx,
         hwc_layer_1_t const* layer = &list->hwLayers[i];
         private_handle_t *hnd = (private_handle_t *)layer->handle;
 
-        // Calculate view frame of each display from the layer displayframe
-        ctx->mViewFrame[dpy] = getUnion(ctx->mViewFrame[dpy],
-                                        layer->displayFrame);
 #ifdef QCOM_BSP
         if (layer->flags & HWC_SCREENSHOT_ANIMATOR_LAYER) {
             ctx->listStats[dpy].isDisplayAnimating = true;
@@ -918,8 +967,14 @@ bool isSecureModePolicy(int mdpVersion) {
 bool isActionSafePresent(hwc_context_t *ctx, int dpy) {
     // if external supports underscan, do nothing
     // it will be taken care in the driver
-    if(!dpy || ctx->mExtDisplay->isCEUnderscanSupported())
+    // Disable Action safe for 8974 due to HW limitation for downscaling
+    // layers with overlapped region
+    // Disable Actionsafe for non HDMI displays.
+    if(!(dpy == HWC_DISPLAY_EXTERNAL) ||
+        qdutils::MDPVersion::getInstance().is8x74v2() ||
+        ctx->mExtDisplay->isCEUnderscanSupported()) {
         return false;
+    }
 
     char value[PROPERTY_VALUE_MAX];
     // Read action safe properties
@@ -996,10 +1051,10 @@ void calculate_crop_rects(hwc_rect_t& crop, hwc_rect_t& dst,
     }
 
     calc_cut(leftCutRatio, topCutRatio, rightCutRatio, bottomCutRatio, orient);
-    crop_l += crop_w * leftCutRatio;
-    crop_t += crop_h * topCutRatio;
-    crop_r -= crop_w * rightCutRatio;
-    crop_b -= crop_h * bottomCutRatio;
+    crop_l += (int)round((double)crop_w * leftCutRatio);
+    crop_t += (int)round((double)crop_h * topCutRatio);
+    crop_r -= (int)round((double)crop_w * rightCutRatio);
+    crop_b -= (int)round((double)crop_h * bottomCutRatio);
 }
 
 bool areLayersIntersecting(const hwc_layer_1_t* layer1,
@@ -1209,10 +1264,9 @@ int hwc_sync(hwc_context_t *ctx, hwc_display_contents_1_t* list, int dpy,
         }
     }
 
-    //Accumulate acquireFenceFds for MDP
+    //Accumulate acquireFenceFds for MDP Overlays
     for(uint32_t i = 0; i < list->numHwLayers; i++) {
-        if((list->hwLayers[i].compositionType == HWC_OVERLAY  ||
-                        list->hwLayers[i].compositionType == HWC_BLIT) &&
+        if(list->hwLayers[i].compositionType == HWC_OVERLAY &&
                         list->hwLayers[i].acquireFenceFd >= 0) {
             if(UNLIKELY(swapzero))
                 acquireFd[count++] = -1;
@@ -1265,7 +1319,13 @@ int hwc_sync(hwc_context_t *ctx, hwc_display_contents_1_t* list, int dpy,
                 list->hwLayers[i].releaseFenceFd = -1;
             } else if(list->hwLayers[i].releaseFenceFd < 0) {
                 //If rotator has not already populated this field.
-                list->hwLayers[i].releaseFenceFd = dup(releaseFd);
+                if(list->hwLayers[i].compositionType == HWC_BLIT) {
+                    //For Blit, the app layers should be released when the Blit is
+                    //complete. This fd was passed from copybit->draw
+                    list->hwLayers[i].releaseFenceFd = dup(fd);
+                } else {
+                    list->hwLayers[i].releaseFenceFd = dup(releaseFd);
+                }
             }
         }
     }
@@ -1612,6 +1672,10 @@ int configureSplit(hwc_context_t *ctx, hwc_layer_1_t *layer,
             whf.format = getMdpFormat(HAL_PIXEL_FORMAT_BGRX_8888);
     }
 
+    /* Calculate the external display position based on MDP downscale,
+       ActionSafe, and extorientation features. */
+    calcExtDisplayPosition(ctx, hnd, dpy, crop, dst, transform, orient);
+
     setMdpFlags(layer, mdpFlagsL, 0, transform);
 
     if(lDest != OV_INVALID && rDest != OV_INVALID) {
@@ -1749,6 +1813,10 @@ int configureSourceSplit(hwc_context_t *ctx, hwc_layer_1_t *layer,
     Whf whf(getWidth(hnd), getHeight(hnd),
             getMdpFormat(hnd->format), hnd->size);
 
+    /* Calculate the external display position based on MDP downscale,
+       ActionSafe, and extorientation features. */
+    calcExtDisplayPosition(ctx, hnd, dpy, crop, dst, transform, orient);
+
     setMdpFlags(layer, mdpFlagsL, 0, transform);
     trimLayer(ctx, dpy, transform, crop, dst);
 
@@ -1879,6 +1947,32 @@ bool isDisplaySplit(hwc_context_t* ctx, int dpy) {
         return true;
     }
     return false;
+}
+
+/* Since we fake non-Hybrid WFD solution as external display, this
+ * function helps us in determining the priority between external
+ * (hdmi/non-Hybrid WFD display) and virtual display devices(SSD/
+ * screenrecord). This can be removed once wfd-client migrates to
+ * using virtual-display api's.
+ */
+bool canUseMDPforVirtualDisplay(hwc_context_t* ctx,
+                                const hwc_display_contents_1_t *list) {
+
+    /* We rely on the fact that for pure virtual display solution
+     * list->outbuf will be a non-NULL handle.
+     *
+     * If there are three active displays (which means there is one
+     * primary, one external and one virtual active display)
+     * we give mdss/mdp hw resources(pipes,smp,etc) for external
+     * display(hdmi/non-Hybrid WFD display) rather than for virtual
+     * display(SSD/screenrecord)
+     */
+
+    if(list->outbuf and (ctx->numActiveDisplays == HWC_NUM_DISPLAY_TYPES)) {
+        return false;
+    }
+
+    return true;
 }
 
 void BwcPM::setBwc(hwc_context_t *ctx, const hwc_rect_t& crop,

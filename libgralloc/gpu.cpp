@@ -95,13 +95,6 @@ int gpu_context_t::gralloc_alloc_buffer(size_t size, int usage,
 
         if (usage & GRALLOC_USAGE_PRIVATE_EXTERNAL_ONLY) {
             flags |= private_handle_t::PRIV_FLAGS_EXTERNAL_ONLY;
-            //The EXTERNAL_BLOCK flag is always an add-on
-            if (usage & GRALLOC_USAGE_PRIVATE_EXTERNAL_BLOCK) {
-                flags |= private_handle_t::PRIV_FLAGS_EXTERNAL_BLOCK;
-            }
-            if (usage & GRALLOC_USAGE_PRIVATE_EXTERNAL_CC) {
-                flags |= private_handle_t::PRIV_FLAGS_EXTERNAL_CC;
-            }
         }
 
         if (bufferType == BUFFER_TYPE_VIDEO) {
@@ -275,13 +268,9 @@ int gpu_context_t::alloc_impl(int w, int h, int format, int usage,
             grallocFormat = HAL_PIXEL_FORMAT_YCrCb_420_SP; //NV21
         else if(usage & GRALLOC_USAGE_HW_CAMERA_WRITE)
             grallocFormat = HAL_PIXEL_FORMAT_YCrCb_420_SP; //NV21
-    }
-
-    if (format == HAL_PIXEL_FORMAT_IMPLEMENTATION_DEFINED &&
-            (usage & GRALLOC_USAGE_HW_COMPOSER )) {
-        //XXX: If we still haven't set a format, default to
-        //RGBA8888
-        grallocFormat = HAL_PIXEL_FORMAT_RGBA_8888;
+        else if(usage & GRALLOC_USAGE_HW_COMPOSER)
+            //XXX: If we still haven't set a format, default to RGBA8888
+            grallocFormat = HAL_PIXEL_FORMAT_RGBA_8888;
     }
 
     getGrallocInformationFromFormat(grallocFormat, &bufferType);
