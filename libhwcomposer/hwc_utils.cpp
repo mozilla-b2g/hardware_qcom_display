@@ -1174,13 +1174,15 @@ void optimizeLayerRects(hwc_context_t *ctx,
                      hwc_rect_t dest_rect;
                      //if intersection is valid rect, deduct it
                      dest_rect  = deductRect(bottomframe, irect);
-                     qhwc::calculate_crop_rects(bottomCrop, bottomframe,
-                                                dest_rect, transform);
-                     //Update layer sourceCropf
-                     layer->sourceCropf.left = bottomCrop.left;
-                     layer->sourceCropf.top = bottomCrop.top;
-                     layer->sourceCropf.right = bottomCrop.right;
-                     layer->sourceCropf.bottom = bottomCrop.bottom;
+                     if (isValidRect(dest_rect)) {
+                         qhwc::calculate_crop_rects(bottomCrop, bottomframe,
+                                                    dest_rect, transform);
+                         //Update layer sourceCropf
+                         layer->sourceCropf.left = bottomCrop.left;
+                         layer->sourceCropf.top = bottomCrop.top;
+                         layer->sourceCropf.right = bottomCrop.right;
+                         layer->sourceCropf.bottom = bottomCrop.bottom;
+                     }
                   }
                }
                j--;
