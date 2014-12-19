@@ -119,6 +119,14 @@ static void intersect(struct copybit_rect_t *out,
     out->t = max(lhs->t, rhs->t);
     out->r = min(lhs->r, rhs->r);
     out->b = min(lhs->b, rhs->b);
+
+    // Check for invalid intersection
+    if (!(out->b > out->t) || !(out->r > out->l)) {
+        out->l = 0;
+        out->t = 0;
+        out->r = 0;
+        out->b = 0;
+    }
 }
 
 /** convert COPYBIT_FORMAT to MDP format */
