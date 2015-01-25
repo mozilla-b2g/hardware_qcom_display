@@ -64,6 +64,9 @@ char const*const GREEN_BLINK_FILE
 char const*const BLUE_BLINK_FILE
         = "/sys/class/leds/blue/blink";
 
+char const*const CHG_LED_FILE
+	= "/sys/class/leds/charger_light/brightness";
+
 /**
  * device methods
  */
@@ -118,6 +121,18 @@ set_light_backlight(struct light_device_t* dev,
     int brightness = rgb_to_brightness(state);
     pthread_mutex_lock(&g_lock);
     err = write_int(LCD_FILE, brightness);
+    pthread_mutex_unlock(&g_lock);
+    return err;
+}
+
+static int
+set_light_charge(struct light_device_t* dev,
+	struct light_state_t const* state)
+{
+    int err = 0;
+    int brightness = rgb_to_brightness(state);
+    pthread_mutex_lock(&g_lock);
+    err = write_int(CHG_LED_FILE, brightness);
     pthread_mutex_unlock(&g_lock);
     return err;
 }
@@ -256,6 +271,8 @@ static int open_lights(const struct hw_module_t* module, char const* name,
         set_light = set_light_buttons;
     else if (0 == strcmp(LIGHT_ID_ATTENTION, name))
         set_light = set_light_attention;
+    else if (0 == strcmp(LIGHT_ID_BATTERY, name))
+	set_light = set_light_charge;
     else
         return -EINVAL;
 
