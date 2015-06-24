@@ -840,18 +840,8 @@ void setListStats(hwc_context_t *ctx,
         if ((ctx->mMDP.version > qdutils::MDP_V4_0) &&
             (layer->visibleRegionScreen.numRects > 1) &&
             !(layer->flags & HWC_COLOR_FILL)) {
-            if (ctx->listStats[dpy].yuvCount) {
-                if (layer->blending == HWC_BLENDING_NONE) {
-                    // MDP Overlay does not support multiple visible rects.
-                    // In Video use case, do not allow MDP Composition on a
-                    // layer, if framework confirms with Opaque content flag
-                    // hence blending mode has been set to HWC_BLENDING_NONE
-                    list->hwLayers[i].flags |= HWC_SKIP_LAYER;
-                }
-            } else {
-                // Do not allow MDP Composition on layer
-                list->hwLayers[i].flags |= HWC_SKIP_LAYER;
-            }
+            // Do not allow MDP Composition on layer
+            list->hwLayers[i].flags |= HWC_SKIP_LAYER;
         }
 
         if (isSkipLayer(&list->hwLayers[i])) {
