@@ -435,7 +435,16 @@ bool Overlay::validateAndSet(const int& dpy, const int& fbFd) {
     }
 
     //Protect against misbehaving clients
-    return num ? GenericPipe::validateAndSet(pipeArray, num, fbFd) : true;
+    bool ret = num ? GenericPipe::validateAndSet(pipeArray, num, fbFd) : true;
+    if (!ret) {
+        for(int i = 0; i < PipeBook::NUM_PIPES; i++) {
+            if (mPipeBook[i].mDisplay == dpy) {
+                PipeBook::resetAllocation(i);
+                PipeBook::resetUse(i);
+            }
+        }
+    }
+    return ret;
 }
 
 void Overlay::initScalar() {
