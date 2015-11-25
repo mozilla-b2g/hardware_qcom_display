@@ -266,15 +266,18 @@ int gralloc_lock_ycbcr(gralloc_module_t const* module,
                 ycbcr->cstride = ystride;
                 ycbcr->chroma_step = 2;
                 break;
-            case HAL_PIXEL_FORMAT_YCbCr_420_SP_VENUS:
-                ystride = cstride = hnd->width;
+            case HAL_PIXEL_FORMAT_YCbCr_420_SP_VENUS: {
+                int ylines = ALIGN(hnd->height, 32);
+                ystride = ALIGN(hnd->width, 128);
                 ycbcr->y  = (void*)hnd->base;
-                ycbcr->cb = (void*)(hnd->base + ystride * hnd->height);
-                ycbcr->cr = (void*)(hnd->base + ystride * hnd->height + 1);
+                ycbcr->cr = (void*)(hnd->base + ystride * ylines + 1);
+                ycbcr->cb = (void*)(hnd->base + ystride * ylines);
                 ycbcr->ystride = ystride;
-                ycbcr->cstride = cstride;
+                ycbcr->cstride = ystride;
                 ycbcr->chroma_step = 2;
+                memset(ycbcr->reserved, 0, sizeof(ycbcr->reserved));
                 break;
+            }
             default:
                 ALOGD("%s: Invalid format passed: 0x%x", __FUNCTION__,
                       hnd->format);
